@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,107 +32,153 @@ import {
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
-// Mock data
-const mockLancamentos = [
-  {
-    id: 1,
-    tipo: "receita",
-    descricao: "Honorários - Caso Silva vs. Santos",
-    valor: 5000.00,
-    conta: "Conta Corrente Principal",
-    caso: "Caso #001 - Silva vs. Santos",
-    vencimento: new Date("2024-01-15"),
-    status: "pendente",
-    recorrente: false
-  },
-  {
-    id: 2,
-    tipo: "despesa",
-    descricao: "Custas processuais",
-    valor: 350.00,
-    conta: "Conta Corrente Principal",
-    caso: "Caso #002 - Oliveira & Cia",
-    vencimento: new Date("2024-01-20"),
-    status: "pago",
-    recorrente: false
-  },
-  {
-    id: 3,
-    tipo: "receita",
-    descricao: "Consultoria jurídica - Mensal",
-    valor: 2500.00,
-    conta: "Conta Corrente Principal",
-    caso: "Caso #003 - Empresa XYZ",
-    vencimento: new Date("2024-02-01"),
-    status: "pendente",
-    recorrente: true
-  }
-];
+interface Transaction {
+  id: string;
+  type: "receita" | "despesa";
+  description: string;
+  amount: number;
+  account_id?: string;
+  case_id?: string;
+  due_date: string;
+  status: "pendente" | "pago";
+  payment_date?: string;
+  payment_account_id?: string;
+  payment_observations?: string;
+  observations?: string;
+  is_recurring: boolean;
+  recurrence_frequency?: "mensal" | "bimestral" | "trimestral" | "semestral" | "anual";
+  recurrence_count?: number;
+  recurrence_end_date?: string;
+  recurrence_original_id?: string;
+  user_id: string;
+}
 
-// Função para buscar contas do localStorage (integração com página Accounts)
-const getAccountsFromStorage = () => {
-  try {
-    const accounts = localStorage.getItem('accounts');
-    if (accounts) {
-      const parsedAccounts = JSON.parse(accounts);
-      return parsedAccounts.map((acc: any) => acc.name);
-    }
-  } catch (error) {
-    console.log('Erro ao carregar contas do localStorage:', error);
-  }
-  return [
-    "Conta Corrente Principal",
-    "Conta Poupança", 
-    "Carteira Digital"
-  ];
-};
+interface Account {
+  id: string;
+  name: string;
+  type: string;
+  balance: number;
+}
 
-const mockContas = getAccountsFromStorage();
-
-const mockCasos = [
-  "Caso #001 - Silva vs. Santos",
-  "Caso #002 - Oliveira & Cia",
-  "Caso #003 - Empresa XYZ",
-  "Caso #004 - Consultoria Geral"
-];
+interface Case {
+  id: string;
+  name: string;
+  status: string;
+}
 
 export default function Lancamentos() {
-  const [lancamentos, setLancamentos] = useState(mockLancamentos);
+  const { toast } = useToast();
+  const { user } = useAuth();
+  
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [cases, setCases] = useState<Case[]>([]);
+  const [loading, setLoading] = useState(true);
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedTipo, setSelectedTipo] = useState<string>("todos");
   const [selectedStatus, setSelectedStatus] = useState<string>("todos");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
-  const [editingLancamento, setEditingLancamento] = useState<any>(null);
-  const [paymentLancamento, setPaymentLancamento] = useState<any>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [paymentTransaction, setPaymentTransaction] = useState<Transaction | null>(null);
   const [paymentDate, setPaymentDate] = useState<Date>();
   const [paymentObservations, setPaymentObservations] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
-  const { toast } = useToast();
 
   // Form state
   const [formData, setFormData] = useState({
-    tipo: "",
-    descricao: "",
-    valor: "",
-    conta: "",
-    caso: "",
-    vencimento: new Date(),
-    recorrente: false,
-    frequencia: "",
-    repeticoes: "",
-    dataFinal: undefined as Date | undefined,
-    observacoes: "",
+    type: "" as "receita" | "despesa" | "",
+    description: "",
+    amount: "",
+    account_id: "",
+    case_id: "",
+    due_date: new Date(),
+    is_recurring: false,
+    recurrence_frequency: "" as "mensal" | "bimestral" | "trimestral" | "semestral" | "anual" | "",
+    recurrence_count: "",
+    recurrence_end_date: undefined as Date | undefined,
+    observations: "",
     temRateio: false,
-    rateios: [] as Array<{id: string, conta: string, valor: number, percentual: number}>
+    rateios: [] as Array<{id: string, account_id: string, amount: number, percentage: number}>
   });
 
-  const filteredLancamentos = lancamentos.filter((lancamento) => {
-    const matchesSearch = lancamento.descricao.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         lancamento.caso.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesTipo = selectedTipo === "todos" || lancamento.tipo === selectedTipo;
-    const matchesStatus = selectedStatus === "todos" || lancamento.status === selectedStatus;
+  useEffect(() => {
+    if (user) {
+      fetchData();
+    }
+  }, [user]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      await Promise.all([
+        fetchTransactions(),
+        fetchAccounts(),
+        fetchCases()
+      ]);
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar dados",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTransactions = async () => {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', user?.id)
+      .order('due_date', { ascending: false });
+
+    if (error) {
+      console.error('Erro ao buscar transações:', error);
+      return;
+    }
+
+    setTransactions(data || []);
+  };
+
+  const fetchAccounts = async () => {
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('*')
+      .eq('user_id', user?.id);
+
+    if (error) {
+      console.error('Erro ao buscar contas:', error);
+      return;
+    }
+
+    setAccounts(data || []);
+  };
+
+  const fetchCases = async () => {
+    const { data, error } = await supabase
+      .from('cases')
+      .select('*')
+      .eq('user_id', user?.id);
+
+    if (error) {
+      console.error('Erro ao buscar casos:', error);
+      return;
+    }
+
+    setCases(data || []);
+  };
+
+  const filteredTransactions = transactions.filter((transaction) => {
+    const matchesSearch = transaction.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesTipo = selectedTipo === "todos" || transaction.type === selectedTipo;
+    const matchesStatus = selectedStatus === "todos" || transaction.status === selectedStatus;
     
     return matchesSearch && matchesTipo && matchesStatus;
   });
@@ -142,6 +188,18 @@ export default function Lancamentos() {
       style: 'currency',
       currency: 'BRL'
     }).format(value);
+  };
+
+  const getAccountName = (accountId?: string) => {
+    if (!accountId) return "Não informada";
+    const account = accounts.find(acc => acc.id === accountId);
+    return account?.name || "Conta não encontrada";
+  };
+
+  const getCaseName = (caseId?: string) => {
+    if (!caseId) return "Não informado";
+    const case_ = cases.find(c => c.id === caseId);
+    return case_?.name || "Caso não encontrado";
   };
 
   // Função para calcular data final baseada na frequência e repetições
@@ -171,51 +229,12 @@ export default function Lancamentos() {
     return date;
   };
 
-  // Função para gerar lançamentos recorrentes
-  const generateRecurringLancamentos = (baseData: any) => {
-    const generatedLancamentos = [];
-    const startDate = new Date(baseData.vencimento);
-    const repetitions = parseInt(baseData.repeticoes) || 1;
-    
-    for (let i = 0; i < repetitions; i++) {
-      const lancamentoDate = new Date(startDate);
-      
-      switch (baseData.frequencia) {
-        case 'mensal':
-          lancamentoDate.setMonth(startDate.getMonth() + i);
-          break;
-        case 'bimestral':
-          lancamentoDate.setMonth(startDate.getMonth() + (i * 2));
-          break;
-        case 'trimestral':
-          lancamentoDate.setMonth(startDate.getMonth() + (i * 3));
-          break;
-        case 'semestral':
-          lancamentoDate.setMonth(startDate.getMonth() + (i * 6));
-          break;
-        case 'anual':
-          lancamentoDate.setFullYear(startDate.getFullYear() + i);
-          break;
-      }
-      
-      generatedLancamentos.push({
-        id: lancamentos.length + generatedLancamentos.length + 1,
-        ...baseData,
-        vencimento: lancamentoDate,
-        descricao: `${baseData.descricao} (${i + 1}/${repetitions})`,
-        status: "pendente",
-        recorrente: true,
-        recorrenciaOriginal: i === 0 // Marca o primeiro como original
-      });
-    }
-    
-    return generatedLancamentos;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.tipo || !formData.descricao || !formData.valor || (!formData.conta && !formData.temRateio)) {
+    if (!user) return;
+
+    if (!formData.type || !formData.description || !formData.amount || (!formData.account_id && !formData.temRateio)) {
       toast({
         title: "Erro",
         description: "Preencha os campos obrigatórios: Tipo, Descrição, Valor e Conta (ou configure rateio)",
@@ -235,8 +254,8 @@ export default function Lancamentos() {
         return;
       }
       
-      const totalPercentual = formData.rateios.reduce((sum, r) => sum + (r.percentual || 0), 0);
-      if (Math.abs(totalPercentual - 100) > 0.01) {
+      const totalPercentage = formData.rateios.reduce((sum, r) => sum + (r.percentage || 0), 0);
+      if (Math.abs(totalPercentage - 100) > 0.01) {
         toast({
           title: "Erro",
           description: "O total dos rateios deve ser 100%",
@@ -246,7 +265,7 @@ export default function Lancamentos() {
       }
     }
 
-    if (formData.recorrente && (!formData.frequencia || !formData.repeticoes)) {
+    if (formData.is_recurring && (!formData.recurrence_frequency || !formData.recurrence_count)) {
       toast({
         title: "Erro",
         description: "Para lançamentos recorrentes, preencha a frequência e número de repetições",
@@ -255,118 +274,248 @@ export default function Lancamentos() {
       return;
     }
 
-    if (editingLancamento) {
-      const updatedLancamento = {
-        ...editingLancamento,
-        ...formData,
-        valor: parseFloat(formData.valor)
+    try {
+      const transactionData = {
+        type: formData.type,
+        description: formData.description,
+        amount: parseFloat(formData.amount),
+        account_id: formData.temRateio ? null : formData.account_id || null,
+        case_id: formData.case_id || null,
+        due_date: formData.due_date.toISOString().split('T')[0],
+        status: "pendente" as const,
+        observations: formData.observations || null,
+        is_recurring: formData.is_recurring,
+        recurrence_frequency: formData.is_recurring && formData.recurrence_frequency ? formData.recurrence_frequency : null,
+        recurrence_count: formData.is_recurring ? parseInt(formData.recurrence_count) : null,
+        recurrence_end_date: formData.recurrence_end_date ? formData.recurrence_end_date.toISOString().split('T')[0] : null,
+        user_id: user.id
       };
-      setLancamentos(lancamentos.map(l => l.id === editingLancamento.id ? updatedLancamento : l));
-      toast({
-        title: "Sucesso",
-        description: "Lançamento atualizado com sucesso"
-      });
-    } else {
-      if (formData.recorrente) {
-        // Gerar múltiplos lançamentos para recorrência
-        const newLancamentos = generateRecurringLancamentos({
-          ...formData,
-          valor: parseFloat(formData.valor)
-        });
-        setLancamentos([...lancamentos, ...newLancamentos]);
+
+      if (editingTransaction) {
+        const { error } = await supabase
+          .from('transactions')
+          .update(transactionData)
+          .eq('id', editingTransaction.id);
+
+        if (error) {
+          console.error('Erro ao atualizar transação:', error);
+          toast({
+            title: "Erro",
+            description: "Erro ao atualizar lançamento",
+            variant: "destructive"
+          });
+          return;
+        }
+
         toast({
           title: "Sucesso",
-          description: `${newLancamentos.length} lançamentos recorrentes criados com sucesso`
+          description: "Lançamento atualizado com sucesso"
         });
       } else {
-        // Lançamento único
-        const newLancamento = {
-          id: lancamentos.length + 1,
-          ...formData,
-          valor: parseFloat(formData.valor),
-          status: "pendente",
-          recorrente: false
-        };
-        setLancamentos([...lancamentos, newLancamento]);
-        toast({
-          title: "Sucesso",
-          description: "Lançamento criado com sucesso"
-        });
-      }
-    }
+        if (formData.is_recurring) {
+          // Criar múltiplas transações para recorrência
+          const transactions = [];
+          const repetitions = parseInt(formData.recurrence_count);
+          
+          for (let i = 0; i < repetitions; i++) {
+            const dueDate = new Date(formData.due_date);
+            
+            switch (formData.recurrence_frequency) {
+              case 'mensal':
+                dueDate.setMonth(dueDate.getMonth() + i);
+                break;
+              case 'bimestral':
+                dueDate.setMonth(dueDate.getMonth() + (i * 2));
+                break;
+              case 'trimestral':
+                dueDate.setMonth(dueDate.getMonth() + (i * 3));
+                break;
+              case 'semestral':
+                dueDate.setMonth(dueDate.getMonth() + (i * 6));
+                break;
+              case 'anual':
+                dueDate.setFullYear(dueDate.getFullYear() + i);
+                break;
+            }
+            
+            transactions.push({
+              ...transactionData,
+              due_date: dueDate.toISOString().split('T')[0],
+              description: `${formData.description} (${i + 1}/${repetitions})`
+            });
+          }
 
-    // Reset form
-    setFormData({
-      tipo: "",
-      descricao: "",
-      valor: "",
-      conta: "",
-      caso: "",
-      vencimento: new Date(),
-      recorrente: false,
-      frequencia: "",
-      repeticoes: "",
-      dataFinal: undefined,
-      observacoes: "",
-      temRateio: false,
-      rateios: []
-    });
-    setEditingLancamento(null);
-    setIsDialogOpen(false);
+          const { error } = await supabase
+            .from('transactions')
+            .insert(transactions);
+
+          if (error) {
+            console.error('Erro ao criar transações recorrentes:', error);
+            toast({
+              title: "Erro",
+              description: "Erro ao criar lançamentos recorrentes",
+              variant: "destructive"
+            });
+            return;
+          }
+
+          toast({
+            title: "Sucesso",
+            description: `${transactions.length} lançamentos recorrentes criados com sucesso`
+          });
+        } else {
+          const { error } = await supabase
+            .from('transactions')
+            .insert([transactionData]);
+
+          if (error) {
+            console.error('Erro ao criar transação:', error);
+            toast({
+              title: "Erro",
+              description: "Erro ao criar lançamento",
+              variant: "destructive"
+            });
+            return;
+          }
+
+          toast({
+            title: "Sucesso",
+            description: "Lançamento criado com sucesso"
+          });
+        }
+
+        // Se tem rateio, criar os splits
+        if (formData.temRateio && formData.rateios.length > 0) {
+          // Implementar lógica de rateio aqui se necessário
+          // Por enquanto vou deixar comentado pois precisa da tabela transaction_splits
+        }
+      }
+
+      resetForm();
+      fetchTransactions();
+    } catch (error) {
+      console.error('Erro ao salvar transação:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao salvar lançamento",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleEdit = (lancamento: any) => {
-    setEditingLancamento(lancamento);
+  const handleEdit = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
     setFormData({
-      tipo: lancamento.tipo,
-      descricao: lancamento.descricao,
-      valor: lancamento.valor.toString(),
-      conta: lancamento.conta,
-      caso: lancamento.caso,
-      vencimento: lancamento.vencimento,
-      recorrente: lancamento.recorrente,
-      frequencia: lancamento.frequencia || "",
-      repeticoes: lancamento.repeticoes || "",
-      dataFinal: lancamento.dataFinal,
-      observacoes: lancamento.observacoes || "",
-      temRateio: lancamento.rateios && lancamento.rateios.length > 0,
-      rateios: lancamento.rateios || []
+      type: transaction.type,
+      description: transaction.description,
+      amount: transaction.amount.toString(),
+      account_id: transaction.account_id || "",
+      case_id: transaction.case_id || "",
+      due_date: new Date(transaction.due_date),
+      is_recurring: transaction.is_recurring,
+      recurrence_frequency: transaction.recurrence_frequency || "",
+      recurrence_count: transaction.recurrence_count?.toString() || "",
+      recurrence_end_date: transaction.recurrence_end_date ? new Date(transaction.recurrence_end_date) : undefined,
+      observations: transaction.observations || "",
+      temRateio: false, // Por enquanto não implementado
+      rateios: []
     });
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: number) => {
-    setLancamentos(lancamentos.filter(l => l.id !== id));
-    toast({
-      title: "Sucesso",
-      description: "Lançamento excluído com sucesso"
-    });
+  const handleDelete = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Erro ao excluir transação:', error);
+        toast({
+          title: "Erro",
+          description: "Erro ao excluir lançamento",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Sucesso",
+        description: "Lançamento excluído com sucesso"
+      });
+
+      fetchTransactions();
+    } catch (error) {
+      console.error('Erro ao excluir transação:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao excluir lançamento",
+        variant: "destructive"
+      });
+    }
   };
 
-  const toggleStatus = (lancamento: any) => {
-    if (lancamento.status === "pendente") {
+  const toggleStatus = (transaction: Transaction) => {
+    if (transaction.status === "pendente") {
       // Abrir modal para registrar pagamento
-      setPaymentLancamento(lancamento);
+      setPaymentTransaction(transaction);
       setPaymentDate(new Date());
       setPaymentObservations("");
-      setPaymentAccount(lancamento.conta); // Pre-selecionar a conta original
+      setPaymentAccount(transaction.account_id || "");
       setIsPaymentDialogOpen(true);
     } else {
       // Marcar como pendente novamente
-      setLancamentos(lancamentos.map(l => 
-        l.id === lancamento.id 
-          ? { ...l, status: "pendente", dataPagamento: undefined, observacoesPagamento: undefined }
-          : l
-      ));
+      updateTransactionStatus(transaction.id, "pendente", null, null, null);
+    }
+  };
+
+  const updateTransactionStatus = async (
+    id: string, 
+    status: "pendente" | "pago",
+    paymentDate: string | null = null,
+    paymentObservations: string | null = null,
+    paymentAccountId: string | null = null
+  ) => {
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          status,
+          payment_date: paymentDate,
+          payment_observations: paymentObservations,
+          payment_account_id: paymentAccountId
+        })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Erro ao atualizar status:', error);
+        toast({
+          title: "Erro",
+          description: "Erro ao atualizar status",
+          variant: "destructive"
+        });
+        return;
+      }
+
       toast({
         title: "Status atualizado",
-        description: "Lançamento marcado como pendente"
+        description: status === "pago" ? "Pagamento registrado com sucesso" : "Lançamento marcado como pendente"
+      });
+
+      fetchTransactions();
+    } catch (error) {
+      console.error('Erro ao atualizar status:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar status",
+        variant: "destructive"
       });
     }
   };
 
   const handlePaymentSubmit = () => {
-    if (!paymentDate) {
+    if (!paymentDate || !paymentTransaction) {
       toast({
         title: "Erro",
         description: "Selecione a data do pagamento/recebimento",
@@ -375,26 +524,49 @@ export default function Lancamentos() {
       return;
     }
 
-    setLancamentos(lancamentos.map(l => 
-      l.id === paymentLancamento.id 
-        ? { 
-            ...l, 
-            status: "pago", 
-            dataPagamento: paymentDate,
-            observacoesPagamento: paymentObservations,
-            contaPagamento: paymentAccount 
-          }
-        : l
-    ));
-
-    toast({
-      title: "Sucesso",
-      description: `${paymentLancamento.tipo === "receita" ? "Recebimento" : "Pagamento"} registrado com sucesso`
-    });
+    updateTransactionStatus(
+      paymentTransaction.id,
+      "pago",
+      paymentDate.toISOString().split('T')[0],
+      paymentObservations,
+      paymentAccount
+    );
 
     setIsPaymentDialogOpen(false);
-    setPaymentLancamento(null);
+    setPaymentTransaction(null);
   };
+
+  const resetForm = () => {
+    setFormData({
+      type: "",
+      description: "",
+      amount: "",
+      account_id: "",
+      case_id: "",
+      due_date: new Date(),
+      is_recurring: false,
+      recurrence_frequency: "",
+      recurrence_count: "",
+      recurrence_end_date: undefined,
+      observations: "",
+      temRateio: false,
+      rateios: []
+    });
+    setEditingTransaction(null);
+    setIsDialogOpen(false);
+  };
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="p-6">
+          <div className="flex justify-center items-center h-64">
+            <p>Carregando lançamentos...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -408,7 +580,7 @@ export default function Lancamentos() {
           
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="default" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              <Button variant="default">
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Lançamento
               </Button>
@@ -416,7 +588,7 @@ export default function Lancamentos() {
             <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
-                  {editingLancamento ? "Editar Lançamento" : "Novo Lançamento"}
+                  {editingTransaction ? "Editar Lançamento" : "Novo Lançamento"}
                 </DialogTitle>
                 <DialogDescription>
                   Preencha os dados do lançamento financeiro
@@ -426,8 +598,8 @@ export default function Lancamentos() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="tipo">Tipo *</Label>
-                    <Select value={formData.tipo} onValueChange={(value) => setFormData({...formData, tipo: value})}>
+                    <Label htmlFor="type">Tipo *</Label>
+                    <Select value={formData.type} onValueChange={(value: "receita" | "despesa") => setFormData({...formData, type: value})}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione o tipo" />
                       </SelectTrigger>
@@ -439,52 +611,52 @@ export default function Lancamentos() {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="valor">Valor *</Label>
+                    <Label htmlFor="amount">Valor *</Label>
                     <Input
-                      id="valor"
+                      id="amount"
                       type="number"
                       step="0.01"
                       placeholder="0,00"
-                      value={formData.valor}
-                      onChange={(e) => setFormData({...formData, valor: e.target.value})}
+                      value={formData.amount}
+                      onChange={(e) => setFormData({...formData, amount: e.target.value})}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="descricao">Descrição *</Label>
+                  <Label htmlFor="description">Descrição *</Label>
                   <Input
-                    id="descricao"
+                    id="description"
                     placeholder="Descrição do lançamento"
-                    value={formData.descricao}
-                    onChange={(e) => setFormData({...formData, descricao: e.target.value})}
+                    value={formData.description}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="conta">Conta *</Label>
-                    <Select value={formData.conta} onValueChange={(value) => setFormData({...formData, conta: value})}>
+                    <Label htmlFor="account">Conta *</Label>
+                    <Select value={formData.account_id} onValueChange={(value) => setFormData({...formData, account_id: value})}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione a conta" />
                       </SelectTrigger>
                       <SelectContent>
-                        {mockContas.map((conta) => (
-                          <SelectItem key={conta} value={conta}>{conta}</SelectItem>
+                        {accounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="caso">Caso/Centro de Custo</Label>
-                    <Select value={formData.caso} onValueChange={(value) => setFormData({...formData, caso: value})}>
+                    <Label htmlFor="case">Caso/Centro de Custo</Label>
+                    <Select value={formData.case_id} onValueChange={(value) => setFormData({...formData, case_id: value})}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione o caso" />
                       </SelectTrigger>
                       <SelectContent>
-                        {mockCasos.map((caso) => (
-                          <SelectItem key={caso} value={caso}>{caso}</SelectItem>
+                        {cases.map((case_) => (
+                          <SelectItem key={case_.id} value={case_.id}>{case_.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -501,14 +673,14 @@ export default function Lancamentos() {
                           className="w-full justify-start text-left font-normal"
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.vencimento ? format(formData.vencimento, "PPP", { locale: ptBR }) : "Selecione a data"}
+                          {formData.due_date ? format(formData.due_date, "PPP", { locale: ptBR }) : "Selecione a data"}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
                         <Calendar
                           mode="single"
-                          selected={formData.vencimento}
-                          onSelect={(date) => date && setFormData({...formData, vencimento: date})}
+                          selected={formData.due_date}
+                          onSelect={(date) => date && setFormData({...formData, due_date: date})}
                           initialFocus
                         />
                       </PopoverContent>
@@ -519,29 +691,29 @@ export default function Lancamentos() {
                     <Label className="text-sm font-medium">Configurações</Label>
                     <div className="flex items-center space-x-2">
                       <Checkbox
-                        id="recorrente"
-                        checked={formData.recorrente}
-                        onCheckedChange={(checked) => setFormData({...formData, recorrente: checked as boolean})}
+                        id="recurring"
+                        checked={formData.is_recurring}
+                        onCheckedChange={(checked) => setFormData({...formData, is_recurring: checked as boolean})}
                       />
-                      <Label htmlFor="recorrente" className="text-sm">Lançamento recorrente</Label>
+                      <Label htmlFor="recurring" className="text-sm">Lançamento recorrente</Label>
                     </div>
                     
                     {/* Campos condicionais para lançamento recorrente */}
-                    {formData.recorrente && (
+                    {formData.is_recurring && (
                       <div className="mt-4 p-4 border rounded-lg bg-muted/50 space-y-3">
                         <h4 className="font-medium text-sm">Configurações de Recorrência</h4>
                         
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1">
-                            <Label htmlFor="frequencia" className="text-xs">Frequência</Label>
+                            <Label htmlFor="frequency" className="text-xs">Frequência</Label>
                             <Select 
-                              value={formData.frequencia} 
-                              onValueChange={(value) => {
-                                setFormData({...formData, frequencia: value});
+                              value={formData.recurrence_frequency} 
+                              onValueChange={(value: "mensal" | "bimestral" | "trimestral" | "semestral" | "anual") => {
+                                setFormData({...formData, recurrence_frequency: value});
                                 // Auto-calcular data final se já tem repetições
-                                if (formData.repeticoes) {
-                                  const endDate = calculateEndDate(formData.vencimento, value, parseInt(formData.repeticoes));
-                                  setFormData(prev => ({...prev, frequencia: value, dataFinal: endDate}));
+                                if (formData.recurrence_count) {
+                                  const endDate = calculateEndDate(formData.due_date, value, parseInt(formData.recurrence_count));
+                                  setFormData(prev => ({...prev, recurrence_frequency: value, recurrence_end_date: endDate}));
                                 }
                               }}
                             >
@@ -559,21 +731,21 @@ export default function Lancamentos() {
                           </div>
                           
                           <div className="space-y-1">
-                            <Label htmlFor="repeticoes" className="text-xs">Repetições</Label>
+                            <Label htmlFor="count" className="text-xs">Repetições</Label>
                             <Input
-                              id="repeticoes"
+                              id="count"
                               type="number"
                               placeholder="Ex: 12"
                               className="h-8"
                               min="1"
-                              value={formData.repeticoes}
+                              value={formData.recurrence_count}
                               onChange={(e) => {
                                 const repetitions = e.target.value;
-                                setFormData({...formData, repeticoes: repetitions});
+                                setFormData({...formData, recurrence_count: repetitions});
                                 // Auto-calcular data final se já tem frequência
-                                if (formData.frequencia && repetitions) {
-                                  const endDate = calculateEndDate(formData.vencimento, formData.frequencia, parseInt(repetitions));
-                                  setFormData(prev => ({...prev, repeticoes: repetitions, dataFinal: endDate}));
+                                if (formData.recurrence_frequency && repetitions) {
+                                  const endDate = calculateEndDate(formData.due_date, formData.recurrence_frequency, parseInt(repetitions));
+                                  setFormData(prev => ({...prev, recurrence_count: repetitions, recurrence_end_date: endDate}));
                                 }
                               }}
                             />
@@ -581,7 +753,7 @@ export default function Lancamentos() {
                         </div>
                         
                         <div className="space-y-1">
-                          <Label htmlFor="dataFim" className="text-xs">Data final (calculada automaticamente)</Label>
+                          <Label htmlFor="endDate" className="text-xs">Data final (calculada automaticamente)</Label>
                           <Popover>
                             <PopoverTrigger asChild>
                               <Button
@@ -589,14 +761,14 @@ export default function Lancamentos() {
                                 className="w-full justify-start text-left font-normal h-8 text-xs"
                               >
                                 <CalendarIcon className="mr-2 h-3 w-3" />
-                                {formData.dataFinal ? format(formData.dataFinal, "PPP", { locale: ptBR }) : "Calculada automaticamente"}
+                                {formData.recurrence_end_date ? format(formData.recurrence_end_date, "PPP", { locale: ptBR }) : "Calculada automaticamente"}
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0">
                               <Calendar
                                 mode="single"
-                                selected={formData.dataFinal}
-                                onSelect={(date) => setFormData({...formData, dataFinal: date})}
+                                selected={formData.recurrence_end_date}
+                                onSelect={(date) => setFormData({...formData, recurrence_end_date: date})}
                                 initialFocus
                                 className="p-3 pointer-events-auto"
                               />
@@ -608,160 +780,26 @@ export default function Lancamentos() {
                   </div>
                 </div>
 
-                 {/* Sistema de Rateio */}
-                 <div className="space-y-2">
-                   <div className="flex items-center space-x-2">
-                     <Checkbox
-                       id="temRateio"
-                       checked={formData.temRateio}
-                       onCheckedChange={(checked) => setFormData({...formData, temRateio: checked as boolean, rateios: checked ? formData.rateios : []})}
-                     />
-                     <Label htmlFor="temRateio" className="text-sm">Usar rateio para este lançamento</Label>
-                   </div>
-                   
-                   {formData.temRateio && (
-                     <div className="border rounded-lg p-3 bg-muted/50 space-y-3">
-                       <div className="flex justify-between items-center">
-                         <span className="text-sm font-medium">Rateios por conta</span>
-                         <Button
-                           type="button"
-                           variant="outline"
-                           size="sm"
-                           onClick={() => {
-                             const valorTotal = parseFloat(formData.valor) || 0;
-                             const newRateio = {
-                               id: Math.random().toString(36).substr(2, 9),
-                               conta: "",
-                               valor: 0,
-                               percentual: 0
-                             };
-                             setFormData({...formData, rateios: [...formData.rateios, newRateio]});
-                           }}
-                           className="h-7 text-xs"
-                         >
-                           <Plus className="h-3 w-3 mr-1" />
-                           Adicionar Rateio
-                         </Button>
-                       </div>
-                       
-                       {formData.rateios.map((rateio, index) => (
-                         <div key={rateio.id} className="grid grid-cols-12 gap-2">
-                           <div className="col-span-5">
-                             <Select 
-                               value={rateio.conta} 
-                               onValueChange={(value) => {
-                                 const newRateios = [...formData.rateios];
-                                 newRateios[index].conta = value;
-                                 setFormData({...formData, rateios: newRateios});
-                               }}
-                             >
-                               <SelectTrigger className="h-8 text-xs">
-                                 <SelectValue placeholder="Selecione a conta" />
-                               </SelectTrigger>
-                               <SelectContent>
-                                 {mockContas.map((conta) => (
-                                   <SelectItem key={conta} value={conta}>{conta}</SelectItem>
-                                 ))}
-                               </SelectContent>
-                             </Select>
-                           </div>
-                           <div className="col-span-3">
-                             <Input
-                               type="number"
-                               placeholder="% (0-100)"
-                               value={rateio.percentual || ""}
-                               onChange={(e) => {
-                                 const percentual = parseFloat(e.target.value) || 0;
-                                 const valorTotal = parseFloat(formData.valor) || 0;
-                                 const valor = (valorTotal * percentual) / 100;
-                                 
-                                 const newRateios = [...formData.rateios];
-                                 newRateios[index] = { ...newRateios[index], percentual, valor };
-                                 setFormData({...formData, rateios: newRateios});
-                               }}
-                               className="h-8 text-xs"
-                               min="0"
-                               max="100"
-                               step="0.01"
-                             />
-                           </div>
-                           <div className="col-span-3">
-                             <Input
-                               type="number"
-                               placeholder="Valor"
-                               value={rateio.valor || ""}
-                               onChange={(e) => {
-                                 const valor = parseFloat(e.target.value) || 0;
-                                 const valorTotal = parseFloat(formData.valor) || 0;
-                                 const percentual = valorTotal > 0 ? (valor / valorTotal) * 100 : 0;
-                                 
-                                 const newRateios = [...formData.rateios];
-                                 newRateios[index] = { ...newRateios[index], valor, percentual };
-                                 setFormData({...formData, rateios: newRateios});
-                               }}
-                               className="h-8 text-xs"
-                               min="0"
-                               step="0.01"
-                             />
-                           </div>
-                           <div className="col-span-1">
-                             <Button
-                               type="button"
-                               variant="outline"
-                               size="sm"
-                               onClick={() => {
-                                 const newRateios = formData.rateios.filter(r => r.id !== rateio.id);
-                                 setFormData({...formData, rateios: newRateios});
-                               }}
-                               className="h-8 w-full p-0"
-                             >
-                               <Trash2 className="h-3 w-3" />
-                             </Button>
-                           </div>
-                         </div>
-                       ))}
-                       
-                       {formData.rateios.length > 0 && (
-                         <div className="text-xs space-y-1">
-                           <div className="flex justify-between">
-                             <span>Total %: {formData.rateios.reduce((sum, r) => sum + (r.percentual || 0), 0).toFixed(2)}%</span>
-                             <span>Total R$: {formatCurrency(formData.rateios.reduce((sum, r) => sum + (r.valor || 0), 0))}</span>
-                           </div>
-                           {Math.abs(formData.rateios.reduce((sum, r) => sum + (r.percentual || 0), 0) - 100) > 0.01 && (
-                             <div className="text-orange-600 flex items-center">
-                               <AlertTriangle className="h-3 w-3 mr-1" />
-                               Total deve ser 100%
-                             </div>
-                           )}
-                         </div>
-                       )}
-                     </div>
-                   )}
-                 </div>
-
-                 <div className="space-y-2">
-                   <Label htmlFor="observacoes">Observações</Label>
-                   <Textarea
-                     id="observacoes"
-                     placeholder="Observações adicionais..."
-                     value={formData.observacoes}
-                     onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
-                   />
-                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="observations">Observações</Label>
+                  <Textarea
+                    id="observations"
+                    placeholder="Observações adicionais..."
+                    value={formData.observations}
+                    onChange={(e) => setFormData({...formData, observations: e.target.value})}
+                  />
+                </div>
 
                 <div className="flex justify-end space-x-2">
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => {
-                      setIsDialogOpen(false);
-                      setEditingLancamento(null);
-                    }}
+                    onClick={resetForm}
                   >
                     Cancelar
                   </Button>
-                  <Button type="submit" variant="default" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                    {editingLancamento ? "Atualizar" : "Criar"} Lançamento
+                  <Button type="submit" variant="default">
+                    {editingTransaction ? "Atualizar" : "Criar"} Lançamento
                   </Button>
                 </div>
               </form>
@@ -780,7 +818,7 @@ export default function Lancamentos() {
                 <div className="relative">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar por descrição ou caso..."
+                    placeholder="Buscar por descrição..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-8"
@@ -813,13 +851,12 @@ export default function Lancamentos() {
           </CardContent>
         </Card>
 
-
         {/* Lista de Lançamentos */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Lançamentos Registrados</CardTitle>
             <CardDescription>
-              {filteredLancamentos.length} lançamento(s) encontrado(s)
+              {filteredTransactions.length} lançamento(s) encontrado(s)
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -829,6 +866,7 @@ export default function Lancamentos() {
                   <TableHead>Tipo</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead>Valor</TableHead>
+                  <TableHead>Conta</TableHead>
                   <TableHead>Caso</TableHead>
                   <TableHead>Vencimento</TableHead>
                   <TableHead>Status</TableHead>
@@ -836,169 +874,115 @@ export default function Lancamentos() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredLancamentos.map((lancamento) => (
-                  <TableRow key={lancamento.id}>
+                {filteredTransactions.map((transaction) => (
+                  <TableRow key={transaction.id}>
                     <TableCell>
                       <div className="flex items-center">
-                        {lancamento.tipo === "receita" ? (
+                        {transaction.type === "receita" ? (
                           <ArrowUpCircle className="h-4 w-4 mr-2 text-green-500" />
                         ) : (
                           <ArrowDownCircle className="h-4 w-4 mr-2 text-red-500" />
                         )}
-                        <span className="capitalize">{lancamento.tipo}</span>
-                        {lancamento.recorrente && (
+                        <span className="capitalize">{transaction.type}</span>
+                        {transaction.is_recurring && (
                           <Repeat className="h-3 w-3 ml-1 text-muted-foreground" />
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
                       <div>
-                        <div className="font-medium">{lancamento.descricao}</div>
-                        <div className="text-sm text-muted-foreground">{lancamento.conta}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono">
-                      {formatCurrency(lancamento.valor)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center">
-                        <Building className="h-3 w-3 mr-1 text-muted-foreground" />
-                        <span className="text-sm">{lancamento.caso}</span>
+                        <div className="font-medium">{transaction.description}</div>
+                        {transaction.observations && (
+                          <div className="text-xs text-muted-foreground">
+                            {transaction.observations}
+                          </div>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      {format(lancamento.vencimento, "dd/MM/yyyy")}
+                      <span className={transaction.type === "receita" ? "text-green-600" : "text-red-600"}>
+                        {formatCurrency(transaction.amount)}
+                      </span>
                     </TableCell>
-                     <TableCell>
-                       <Badge 
-                         variant={lancamento.status === "pendente" ? "secondary" : "default"}
-                         className={lancamento.status === "pago" ? "bg-green-100 text-green-800" : ""}
-                       >
-                         {lancamento.status === "pendente" ? "Pendente" : "Pago/Recebido"}
-                       </Badge>
-                     </TableCell>
-                     <TableCell className="text-right">
-                       <div className="flex justify-end space-x-1">
-                         {lancamento.status === "pendente" ? (
-                           <Button
-                             variant="outline"
-                             size="sm"
-                             onClick={() => toggleStatus(lancamento)}
-                             className="text-xs px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                           >
-                             <DollarSign className="h-4 w-4 mr-1" />
-                             {lancamento.tipo === "receita" ? "Receber" : "Pagar"}
-                           </Button>
-                         ) : (
-                           <Button
-                             variant="outline"
-                             size="sm"
-                             disabled
-                             className="text-xs px-2 py-1 opacity-50"
-                           >
-                             <DollarSign className="h-4 w-4 mr-1" />
-                             {lancamento.tipo === "receita" ? "Recebido" : "Pago"}
-                           </Button>
-                         )}
-                         
-                         <DropdownMenu>
-                           <DropdownMenuTrigger asChild>
-                             <Button variant="ghost" size="sm">
-                               <MoreVertical className="h-4 w-4" />
-                             </Button>
-                           </DropdownMenuTrigger>
-                           <DropdownMenuContent align="end">
-                             <DropdownMenuItem onClick={() => handleEdit(lancamento)}>
-                               <Edit className="h-4 w-4 mr-2" />
-                               Editar Lançamento
-                             </DropdownMenuItem>
-                             {lancamento.status === "pago" && (
-                               <AlertDialog>
-                                 <AlertDialogTrigger asChild>
-                                   <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                     <AlertTriangle className="h-4 w-4 mr-2" />
-                                     Marcar como Pendente
-                                   </DropdownMenuItem>
-                                 </AlertDialogTrigger>
-                                 <AlertDialogContent>
-                                   <AlertDialogHeader>
-                                     <AlertDialogTitle>Confirmar reversão</AlertDialogTitle>
-                                     <AlertDialogDescription>
-                                       Tem certeza que deseja reverter este lançamento para pendente? Esta ação irá remover o registro de pagamento/recebimento.
-                                     </AlertDialogDescription>
-                                   </AlertDialogHeader>
-                                   <AlertDialogFooter>
-                                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                     <AlertDialogAction onClick={() => toggleStatus(lancamento)}>
-                                       Sim, reverter
-                                     </AlertDialogAction>
-                                   </AlertDialogFooter>
-                                 </AlertDialogContent>
-                               </AlertDialog>
-                             )}
-                             <DropdownMenuItem 
-                               onClick={() => handleDelete(lancamento.id)}
-                               className="text-red-500 hover:text-red-700"
-                             >
-                               <Trash2 className="h-4 w-4 mr-2" />
-                               Excluir
-                             </DropdownMenuItem>
-                           </DropdownMenuContent>
-                         </DropdownMenu>
-                       </div>
-                     </TableCell>
+                    <TableCell>{getAccountName(transaction.account_id)}</TableCell>
+                    <TableCell>{getCaseName(transaction.case_id)}</TableCell>
+                    <TableCell>
+                      {format(new Date(transaction.due_date), "dd/MM/yyyy", { locale: ptBR })}
+                    </TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant={transaction.status === "pago" ? "default" : "outline"}
+                        className={transaction.status === "pago" ? "status-paid" : "status-pending"}
+                      >
+                        {transaction.status === "pago" ? "Pago" : "Pendente"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEdit(transaction)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => toggleStatus(transaction)}
+                            className={transaction.status === "pendente" ? "text-green-600" : "text-yellow-600"}
+                          >
+                            <DollarSign className="mr-2 h-4 w-4" />
+                            {transaction.status === "pendente" ? "Marcar como Pago" : "Marcar como Pendente"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleDelete(transaction.id)}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-            
-            {filteredLancamentos.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                Nenhum lançamento encontrado
+
+            {filteredTransactions.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">
+                  Nenhum lançamento encontrado. Clique em "Novo Lançamento" para começar.
+                </p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Modal de Registrar Pagamento/Recebimento */}
+        {/* Dialog de Pagamento */}
         <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                {paymentLancamento?.tipo === "receita" ? "Registrar Recebimento" : "Registrar Pagamento"}
+                Registrar {paymentTransaction?.type === "receita" ? "Recebimento" : "Pagamento"}
               </DialogTitle>
               <DialogDescription>
-                Registre a data e observações do {paymentLancamento?.tipo === "receita" ? "recebimento" : "pagamento"}
+                Confirme os dados do {paymentTransaction?.type === "receita" ? "recebimento" : "pagamento"}
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
-              <div className="p-3 bg-muted rounded-lg">
-                <p className="font-medium">{paymentLancamento?.descricao}</p>
-                <p className="text-sm text-muted-foreground">
-                  Valor: {paymentLancamento && formatCurrency(paymentLancamento.valor)}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Conta original: {paymentLancamento?.conta}
-                </p>
+              <div>
+                <Label>Lançamento</Label>
+                <div className="text-sm text-muted-foreground">
+                  {paymentTransaction?.description} - {formatCurrency(paymentTransaction?.amount || 0)}
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Conta para {paymentLancamento?.tipo === "receita" ? "Recebimento" : "Pagamento"} *</Label>
-                <Select value={paymentAccount} onValueChange={setPaymentAccount}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a conta" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mockContas.map((conta) => (
-                      <SelectItem key={conta} value={conta}>{conta}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Data do {paymentLancamento?.tipo === "receita" ? "Recebimento" : "Pagamento"} *</Label>
+                <Label>Data do {paymentTransaction?.type === "receita" ? "Recebimento" : "Pagamento"} *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -1015,17 +999,29 @@ export default function Lancamentos() {
                       selected={paymentDate}
                       onSelect={setPaymentDate}
                       initialFocus
-                      className="p-3 pointer-events-auto"
                     />
                   </PopoverContent>
                 </Popover>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="payment-obs">Observações</Label>
+                <Label>Conta para {paymentTransaction?.type === "receita" ? "Recebimento" : "Pagamento"} *</Label>
+                <Select value={paymentAccount} onValueChange={setPaymentAccount}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a conta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Observações</Label>
                 <Textarea
-                  id="payment-obs"
-                  placeholder="Observações sobre o pagamento/recebimento..."
+                  placeholder="Observações sobre o pagamento..."
                   value={paymentObservations}
                   onChange={(e) => setPaymentObservations(e.target.value)}
                 />
@@ -1039,12 +1035,8 @@ export default function Lancamentos() {
                 >
                   Cancelar
                 </Button>
-                <Button 
-                  onClick={handlePaymentSubmit}
-                  variant="default" 
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                >
-                  Confirmar {paymentLancamento?.tipo === "receita" ? "Recebimento" : "Pagamento"}
+                <Button onClick={handlePaymentSubmit}>
+                  Confirmar {paymentTransaction?.type === "receita" ? "Recebimento" : "Pagamento"}
                 </Button>
               </div>
             </div>
