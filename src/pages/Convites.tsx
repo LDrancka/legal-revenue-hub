@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Navigate } from "react-router-dom";
+import { Layout } from "@/components/Layout";
 
 interface Invitation {
   id: string;
@@ -169,148 +170,150 @@ const Convites = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Gerenciar Convites</h1>
-        <p className="text-muted-foreground">
-          Convide novos usuários para acessar o sistema
-        </p>
-      </div>
+    <Layout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-3xl font-bold">Gerenciar Convites</h1>
+          <p className="text-muted-foreground">
+            Convide novos usuários para acessar o sistema
+          </p>
+        </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Formulário de Novo Convite */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Mail className="h-5 w-5" />
-              Novo Convite
-            </CardTitle>
-            <CardDescription>
-              Envie um convite para um novo usuário
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCreateInvite} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="usuario@exemplo.com"
-                  required
-                />
-              </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Formulário de Novo Convite */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Novo Convite
+              </CardTitle>
+              <CardDescription>
+                Envie um convite para um novo usuário
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateInvite} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="usuario@exemplo.com"
+                    required
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="role">Tipo de Usuário</Label>
-                <Select name="role" required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="user">Usuário</SelectItem>
-                    <SelectItem value="admin">Administrador</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="role">Tipo de Usuário</Label>
+                  <Select name="role" required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">Usuário</SelectItem>
+                      <SelectItem value="admin">Administrador</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoading}
-              >
-                {isLoading ? "Criando..." : "Criar Convite"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Criando..." : "Criar Convite"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
 
-        {/* Lista de Convites */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Convites Enviados
-            </CardTitle>
-            <CardDescription>
-              Gerencie os convites existentes
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {invitations.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">
-                Nenhum convite encontrado
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {invitations.map((invitation) => (
-                  <div
-                    key={invitation.id}
-                    className="flex items-center justify-between p-4 border rounded-lg"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium">{invitation.email}</span>
-                        <Badge variant={invitation.role === 'admin' ? 'default' : 'secondary'}>
-                          {invitation.role === 'admin' ? 'Admin' : 'Usuário'}
-                        </Badge>
-                        {invitation.used_at && (
-                          <Badge variant="outline" className="text-green-600">
-                            Usado
+          {/* Lista de Convites */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Convites Enviados
+              </CardTitle>
+              <CardDescription>
+                Gerencie os convites existentes
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {invitations.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  Nenhum convite encontrado
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {invitations.map((invitation) => (
+                    <div
+                      key={invitation.id}
+                      className="flex items-center justify-between p-4 border rounded-lg"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium">{invitation.email}</span>
+                          <Badge variant={invitation.role === 'admin' ? 'default' : 'secondary'}>
+                            {invitation.role === 'admin' ? 'Admin' : 'Usuário'}
                           </Badge>
-                        )}
-                        {!invitation.used_at && isExpired(invitation.expires_at) && (
-                          <Badge variant="destructive">
-                            Expirado
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          Criado: {formatDate(invitation.created_at)}
+                          {invitation.used_at && (
+                            <Badge variant="outline" className="text-green-600">
+                              Usado
+                            </Badge>
+                          )}
+                          {!invitation.used_at && isExpired(invitation.expires_at) && (
+                            <Badge variant="destructive">
+                              Expirado
+                            </Badge>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          Expira: {formatDate(invitation.expires_at)}
-                        </div>
-                        {invitation.used_at && (
-                          <div className="flex items-center gap-1 text-green-600">
-                            <User className="h-3 w-3" />
-                            Usado: {formatDate(invitation.used_at)}
+                        <div className="text-sm text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Criado: {formatDate(invitation.created_at)}
                           </div>
-                        )}
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            Expira: {formatDate(invitation.expires_at)}
+                          </div>
+                          {invitation.used_at && (
+                            <div className="flex items-center gap-1 text-green-600">
+                              <User className="h-3 w-3" />
+                              Usado: {formatDate(invitation.used_at)}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-2">
-                      {!invitation.used_at && !isExpired(invitation.expires_at) && (
+                      <div className="flex items-center gap-2">
+                        {!invitation.used_at && !isExpired(invitation.expires_at) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => copyInviteLink(invitation.token)}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => copyInviteLink(invitation.token)}
+                          variant="destructive"
+                          onClick={() => deleteInvitation(invitation.id)}
                         >
-                          <Copy className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => deleteInvitation(invitation.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    </div>
+    </Layout>
   );
 };
 

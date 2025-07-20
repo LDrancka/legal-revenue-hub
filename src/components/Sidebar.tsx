@@ -179,10 +179,11 @@ export const Sidebar = () => {
         )}
         
         <Button
-          variant="ghost"
+          variant={location.pathname === "/settings" ? "default" : "ghost"}
           className={cn(
             "w-full justify-start",
-            collapsed && "px-2"
+            collapsed && "px-2",
+            location.pathname === "/settings" && "financial-gradient text-white"
           )}
           asChild
         >
