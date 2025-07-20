@@ -184,9 +184,12 @@ export const Sidebar = () => {
             "w-full justify-start",
             collapsed && "px-2"
           )}
+          asChild
         >
-          <Settings className={cn("h-4 w-4", !collapsed && "mr-2")} />
-          {!collapsed && <span>Configurações</span>}
+          <Link to="/settings" className="flex items-center w-full text-inherit no-underline">
+            <Settings className={cn("h-4 w-4", !collapsed && "mr-2")} />
+            {!collapsed && <span>Configurações</span>}
+          </Link>
         </Button>
         
         <Button
