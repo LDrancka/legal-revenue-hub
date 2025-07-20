@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,12 +8,23 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
-import { User, Mail, Lock, Save } from "lucide-react";
+import { User, Mail, Lock, Save, UserCircle } from "lucide-react";
+
+interface Profile {
+  id: string;
+  user_id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 const Settings = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [passwordData, setPasswordData] = useState({
     currentPassword: "",
     newPassword: "",
@@ -22,6 +33,82 @@ const Settings = () => {
   const [emailData, setEmailData] = useState({
     newEmail: user?.email || ""
   });
+  const [profileData, setProfileData] = useState({
+    displayName: "",
+    avatarUrl: ""
+  });
+
+  // Buscar perfil do usuário
+  const fetchProfile = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Erro ao buscar perfil:', error);
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: "Erro ao carregar perfil do usuário"
+        });
+      } else if (data) {
+        setProfile(data);
+        setProfileData({
+          displayName: data.display_name || "",
+          avatarUrl: data.avatar_url || ""
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao buscar perfil:', error);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchProfile();
+    }
+  }, [user]);
+
+  // Atualizar perfil
+  const handleProfileUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          user_id: user?.id || '',
+          display_name: profileData.displayName || null,
+          avatar_url: profileData.avatarUrl || null,
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Sucesso",
+        description: "Perfil atualizado com sucesso!",
+      });
+
+      fetchProfile();
+    } catch (error: any) {
+      console.error('Erro ao atualizar perfil:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao atualizar perfil.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +196,16 @@ const Settings = () => {
     }
   };
 
+  if (loadingProfile) {
+    return (
+      <Layout>
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -120,6 +217,45 @@ const Settings = () => {
         </div>
 
         <div className="grid gap-6">
+          {/* Perfil do Usuário */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserCircle className="h-5 w-5" />
+                Perfil do Usuário
+              </CardTitle>
+              <CardDescription>
+                Atualize suas informações de perfil.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleProfileUpdate} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="displayName">Nome de exibição</Label>
+                  <Input
+                    id="displayName"
+                    value={profileData.displayName}
+                    onChange={(e) => setProfileData({ ...profileData, displayName: e.target.value })}
+                    placeholder="Seu nome de exibição"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="avatarUrl">URL do Avatar</Label>
+                  <Input
+                    id="avatarUrl"
+                    value={profileData.avatarUrl}
+                    onChange={(e) => setProfileData({ ...profileData, avatarUrl: e.target.value })}
+                    placeholder="https://exemplo.com/avatar.jpg"
+                  />
+                </div>
+                <Button type="submit" disabled={isLoading} className="flex items-center gap-2">
+                  <Save className="h-4 w-4" />
+                  {isLoading ? "Salvando..." : "Salvar Perfil"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
           {/* Informações da Conta */}
           <Card>
             <CardHeader>
@@ -137,8 +273,15 @@ const Settings = () => {
                 <Input value={user?.email || ""} disabled />
               </div>
               <div className="space-y-2">
-                <Label>ID do usuário</Label>
-                <Input value={user?.id || ""} disabled />
+                <Label>Nome de exibição</Label>
+                <Input value={profile?.display_name || "Não definido"} disabled />
+              </div>
+              <div className="space-y-2">
+                <Label>Data de criação</Label>
+                <Input 
+                  value={profile?.created_at ? new Date(profile.created_at).toLocaleString('pt-BR') : "N/A"} 
+                  disabled 
+                />
               </div>
             </CardContent>
           </Card>
