@@ -879,13 +879,27 @@ export default function Lancamentos() {
                      </TableCell>
                      <TableCell className="text-right">
                        <div className="flex justify-end space-x-1">
-                         <Button
-                           variant="ghost"
-                           size="sm"
-                           onClick={() => handleEdit(lancamento)}
-                         >
-                           <Edit className="h-4 w-4" />
-                         </Button>
+                         {lancamento.status === "pendente" ? (
+                           <Button
+                             variant="outline"
+                             size="sm"
+                             onClick={() => toggleStatus(lancamento)}
+                             className="text-xs px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                           >
+                             <DollarSign className="h-4 w-4 mr-1" />
+                             {lancamento.tipo === "receita" ? "Receber" : "Pagar"}
+                           </Button>
+                         ) : (
+                           <Button
+                             variant="outline"
+                             size="sm"
+                             disabled
+                             className="text-xs px-2 py-1 opacity-50"
+                           >
+                             <DollarSign className="h-4 w-4 mr-1" />
+                             {lancamento.tipo === "receita" ? "Recebido" : "Pago"}
+                           </Button>
+                         )}
                          
                          <DropdownMenu>
                            <DropdownMenuTrigger asChild>
@@ -894,12 +908,11 @@ export default function Lancamentos() {
                              </Button>
                            </DropdownMenuTrigger>
                            <DropdownMenuContent align="end">
-                             {lancamento.status === "pendente" ? (
-                               <DropdownMenuItem onClick={() => toggleStatus(lancamento)}>
-                                 <DollarSign className="h-4 w-4 mr-2" />
-                                 {lancamento.tipo === "receita" ? "Registrar Recebimento" : "Registrar Pagamento"}
-                               </DropdownMenuItem>
-                             ) : (
+                             <DropdownMenuItem onClick={() => handleEdit(lancamento)}>
+                               <Edit className="h-4 w-4 mr-2" />
+                               Editar Lançamento
+                             </DropdownMenuItem>
+                             {lancamento.status === "pago" && (
                                <AlertDialog>
                                  <AlertDialogTrigger asChild>
                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
