@@ -94,10 +94,11 @@ const Settings = () => {
       if (error) throw error;
 
       toast({
-        title: "Sucesso",
-        description: "E-mail alterado com sucesso! Verifique sua caixa de entrada para confirmar o novo e-mail.",
+        title: "Confirmação necessária",
+        description: "Verifique sua caixa de entrada e clique no link de confirmação para ativar o novo e-mail. Até lá, continue usando o e-mail atual para fazer login.",
       });
     } catch (error: any) {
+      console.error("Erro ao alterar e-mail:", error);
       toast({
         title: "Erro",
         description: error.message || "Erro ao alterar e-mail.",
