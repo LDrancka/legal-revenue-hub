@@ -65,11 +65,25 @@ const mockLancamentos = [
   }
 ];
 
-const mockContas = [
-  "Conta Corrente Principal",
-  "Conta Poupança",
-  "Carteira Digital"
-];
+// Função para buscar contas do localStorage (integração com página Accounts)
+const getAccountsFromStorage = () => {
+  try {
+    const accounts = localStorage.getItem('accounts');
+    if (accounts) {
+      const parsedAccounts = JSON.parse(accounts);
+      return parsedAccounts.map((acc: any) => acc.name);
+    }
+  } catch (error) {
+    console.log('Erro ao carregar contas do localStorage:', error);
+  }
+  return [
+    "Conta Corrente Principal",
+    "Conta Poupança", 
+    "Carteira Digital"
+  ];
+};
+
+const mockContas = getAccountsFromStorage();
 
 const mockCasos = [
   "Caso #001 - Silva vs. Santos",
@@ -253,7 +267,7 @@ export default function Lancamentos() {
           
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="financial-gradient hover:opacity-90 transition-opacity">
+              <Button className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium shadow-md hover:shadow-lg transition-all duration-200">
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Lançamento
               </Button>
@@ -370,6 +384,64 @@ export default function Lancamentos() {
                       />
                       <Label htmlFor="recorrente" className="text-sm">Lançamento recorrente</Label>
                     </div>
+                    
+                    {/* Campos condicionais para lançamento recorrente */}
+                    {formData.recorrente && (
+                      <div className="mt-4 p-4 border rounded-lg bg-muted/50 space-y-3">
+                        <h4 className="font-medium text-sm">Configurações de Recorrência</h4>
+                        
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="frequencia" className="text-xs">Frequência</Label>
+                            <Select>
+                              <SelectTrigger className="h-8">
+                                <SelectValue placeholder="Selecione" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="mensal">Mensal</SelectItem>
+                                <SelectItem value="bimestral">Bimestral</SelectItem>
+                                <SelectItem value="trimestral">Trimestral</SelectItem>
+                                <SelectItem value="semestral">Semestral</SelectItem>
+                                <SelectItem value="anual">Anual</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <Label htmlFor="repeticoes" className="text-xs">Repetições</Label>
+                            <Input
+                              id="repeticoes"
+                              type="number"
+                              placeholder="Ex: 12"
+                              className="h-8"
+                              min="1"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <Label htmlFor="dataFim" className="text-xs">Data final (opcional)</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className="w-full justify-start text-left font-normal h-8 text-xs"
+                              >
+                                <CalendarIcon className="mr-2 h-3 w-3" />
+                                Selecione a data final
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <Calendar
+                                mode="single"
+                                initialFocus
+                                className="p-3 pointer-events-auto"
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -394,7 +466,7 @@ export default function Lancamentos() {
                   >
                     Cancelar
                   </Button>
-                  <Button type="submit" className="financial-gradient">
+                  <Button type="submit" className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium">
                     {editingLancamento ? "Atualizar" : "Criar"} Lançamento
                   </Button>
                 </div>
@@ -627,7 +699,7 @@ export default function Lancamentos() {
                 </Button>
                 <Button 
                   onClick={handlePaymentSubmit}
-                  className="financial-gradient"
+                  className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white"
                 >
                   Confirmar {paymentLancamento?.tipo === "receita" ? "Recebimento" : "Pagamento"}
                 </Button>

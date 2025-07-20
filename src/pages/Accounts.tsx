@@ -20,29 +20,42 @@ interface Account {
 
 const Accounts = () => {
   const { toast } = useToast();
-  const [accounts, setAccounts] = useState<Account[]>([
-    {
-      id: "1",
-      name: "Conta Corrente Principal",
-      type: "bank",
-      balance: 125000.00,
-      description: "Conta corrente para movimentação diária"
-    },
-    {
-      id: "2",
-      name: "Caixa Escritório",
-      type: "cash",
-      balance: 2500.00,
-      description: "Dinheiro em espécie no escritório"
-    },
-    {
-      id: "3",
-      name: "Conta Poupança",
-      type: "investment",
-      balance: 50000.00,
-      description: "Reserva de emergência"
+  const [accounts, setAccounts] = useState<Account[]>(() => {
+    // Carregar contas do localStorage
+    try {
+      const savedAccounts = localStorage.getItem('accounts');
+      if (savedAccounts) {
+        return JSON.parse(savedAccounts);
+      }
+    } catch (error) {
+      console.log('Erro ao carregar contas:', error);
     }
-  ]);
+    
+    // Contas padrão se não houver no localStorage
+    return [
+      {
+        id: "1",
+        name: "Conta Corrente Principal",
+        type: "bank",
+        balance: 125000.00,
+        description: "Conta corrente para movimentação diária"
+      },
+      {
+        id: "2",
+        name: "Caixa Escritório",
+        type: "cash",
+        balance: 2500.00,
+        description: "Dinheiro em espécie no escritório"
+      },
+      {
+        id: "3",
+        name: "Conta Poupança",
+        type: "investment",
+        balance: 50000.00,
+        description: "Reserva de emergência"
+      }
+    ];
+  });
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -92,15 +105,19 @@ const Accounts = () => {
     };
 
     if (editingAccount) {
-      setAccounts(accounts.map(acc => 
+      const updatedAccounts = accounts.map(acc => 
         acc.id === editingAccount.id ? accountData : acc
-      ));
+      );
+      setAccounts(updatedAccounts);
+      localStorage.setItem('accounts', JSON.stringify(updatedAccounts));
       toast({
         title: "Conta atualizada",
         description: "A conta foi atualizada com sucesso."
       });
     } else {
-      setAccounts([...accounts, accountData]);
+      const newAccounts = [...accounts, accountData];
+      setAccounts(newAccounts);
+      localStorage.setItem('accounts', JSON.stringify(newAccounts));
       toast({
         title: "Conta criada",
         description: "Nova conta foi criada com sucesso."
@@ -122,7 +139,9 @@ const Accounts = () => {
   };
 
   const handleDelete = (accountId: string) => {
-    setAccounts(accounts.filter(acc => acc.id !== accountId));
+    const updatedAccounts = accounts.filter(acc => acc.id !== accountId);
+    setAccounts(updatedAccounts);
+    localStorage.setItem('accounts', JSON.stringify(updatedAccounts));
     toast({
       title: "Conta excluída",
       description: "A conta foi excluída com sucesso."
