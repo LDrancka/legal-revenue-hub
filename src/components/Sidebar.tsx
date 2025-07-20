@@ -18,25 +18,23 @@ import {
   Mail
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { Link, useLocation } from "react-router-dom";
 
 const menuItems = [
   {
     title: "Dashboard",
     icon: LayoutDashboard,
-    href: "/",
-    active: window.location.pathname === "/"
+    href: "/"
   },
   {
     title: "Contas",
     icon: Wallet,
-    href: "/accounts",
-    active: window.location.pathname === "/accounts"
+    href: "/accounts"
   },
   {
     title: "Lançamentos",
     icon: Receipt,
-    href: "/lancamentos",
-    active: window.location.pathname === "/lancamentos"
+    href: "/lancamentos"
   },
   {
     title: "Casos",
@@ -64,14 +62,14 @@ const adminMenuItems = [
   {
     title: "Convites",
     icon: Mail,
-    href: "/convites",
-    active: window.location.pathname === "/convites"
+    href: "/convites"
   }
 ];
 
 export const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const { user, signOut, isAdmin } = useAuth();
+  const location = useLocation();
 
   return (
     <aside className={cn(
@@ -107,21 +105,22 @@ export const Sidebar = () => {
       <nav className="flex-1 p-4 space-y-2">
         {menuItems.map((item) => {
           const Icon = item.icon;
+          const isActive = location.pathname === item.href;
           return (
             <Button
               key={item.href}
-              variant={item.active ? "default" : "ghost"}
+              variant={isActive ? "default" : "ghost"}
               className={cn(
                 "w-full justify-start",
                 collapsed && "px-2",
-                item.active && "financial-gradient text-white"
+                isActive && "financial-gradient text-white"
               )}
               asChild
             >
-              <a href={item.href} className="flex items-center w-full text-inherit no-underline">
+              <Link to={item.href} className="flex items-center w-full text-inherit no-underline">
                 <Icon className={cn("h-4 w-4", !collapsed && "mr-2")} />
                 {!collapsed && <span>{item.title}</span>}
-              </a>
+              </Link>
             </Button>
           );
         })}
@@ -138,21 +137,22 @@ export const Sidebar = () => {
             )}
             {adminMenuItems.map((item) => {
               const Icon = item.icon;
+              const isActive = location.pathname === item.href;
               return (
                 <Button
                   key={item.href}
-                  variant={item.active ? "default" : "ghost"}
+                  variant={isActive ? "default" : "ghost"}
                   className={cn(
                     "w-full justify-start",
                     collapsed && "px-2",
-                    item.active && "financial-gradient text-white"
+                    isActive && "financial-gradient text-white"
                   )}
                   asChild
                 >
-                  <a href={item.href} className="flex items-center w-full text-inherit no-underline">
+                  <Link to={item.href} className="flex items-center w-full text-inherit no-underline">
                     <Icon className={cn("h-4 w-4", !collapsed && "mr-2")} />
                     {!collapsed && <span>{item.title}</span>}
-                  </a>
+                  </Link>
                 </Button>
               );
             })}
