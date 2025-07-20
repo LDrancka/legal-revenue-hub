@@ -54,7 +54,35 @@ const Auth = () => {
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
     
-    await signIn(email, password);
+    const { error } = await signIn(email, password);
+    
+    // Se falhar e for o email admin, tentar criar via edge function
+    if (error && email === 'admin@jusfinance.com') {
+      try {
+        const response = await fetch('/api/create-admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        
+        if (response.ok) {
+          toast({
+            title: "Admin criado com sucesso",
+            description: "Tente fazer login novamente",
+          });
+          // Tentar login novamente
+          await signIn(email, password);
+        }
+      } catch (createError) {
+        console.error('Erro ao criar admin:', createError);
+        toast({
+          variant: "destructive",
+          title: "Erro no login",
+          description: "Verifique suas credenciais e tente novamente",
+        });
+      }
+    }
+    
     setIsLoading(false);
   };
 
@@ -163,6 +191,15 @@ const Auth = () => {
                   >
                     {isLoading ? "Entrando..." : "Entrar"}
                   </Button>
+                  
+                  <div className="mt-4 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+                    <p className="text-orange-800 dark:text-orange-200 text-sm mb-2">
+                      <strong>Problema temporário:</strong> O CAPTCHA está ativo e impedindo logins.
+                    </p>
+                    <p className="text-orange-700 dark:text-orange-300 text-xs">
+                      Para resolver: Acesse <a href="https://supabase.com/dashboard/project/wwqnpmkrudfxfbpvsmzr/auth/providers" target="_blank" className="underline">configurações do Supabase</a> e desabilite "Enable CAPTCHA protection" na seção "Security and protection".
+                    </p>
+                  </div>
                 </form>
               </CardContent>
             </TabsContent>
