@@ -84,8 +84,11 @@ export default function Lancamentos() {
   const [selectedTipo, setSelectedTipo] = useState<string>("todos");
   const [selectedStatus, setSelectedStatus] = useState<string>("todos");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [editingLancamento, setEditingLancamento] = useState<any>(null);
-  const [date, setDate] = useState<Date>();
+  const [paymentLancamento, setPaymentLancamento] = useState<any>(null);
+  const [paymentDate, setPaymentDate] = useState<Date>();
+  const [paymentObservations, setPaymentObservations] = useState("");
   const { toast } = useToast();
 
   // Form state
@@ -187,12 +190,55 @@ export default function Lancamentos() {
     });
   };
 
-  const toggleStatus = (id: number) => {
+  const toggleStatus = (lancamento: any) => {
+    if (lancamento.status === "pendente") {
+      // Abrir modal para registrar pagamento
+      setPaymentLancamento(lancamento);
+      setPaymentDate(new Date());
+      setPaymentObservations("");
+      setIsPaymentDialogOpen(true);
+    } else {
+      // Marcar como pendente novamente
+      setLancamentos(lancamentos.map(l => 
+        l.id === lancamento.id 
+          ? { ...l, status: "pendente", dataPagamento: undefined, observacoesPagamento: undefined }
+          : l
+      ));
+      toast({
+        title: "Status atualizado",
+        description: "Lançamento marcado como pendente"
+      });
+    }
+  };
+
+  const handlePaymentSubmit = () => {
+    if (!paymentDate) {
+      toast({
+        title: "Erro",
+        description: "Selecione a data do pagamento/recebimento",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLancamentos(lancamentos.map(l => 
-      l.id === id 
-        ? { ...l, status: l.status === "pendente" ? "pago" : "pendente" }
+      l.id === paymentLancamento.id 
+        ? { 
+            ...l, 
+            status: "pago", 
+            dataPagamento: paymentDate,
+            observacoesPagamento: paymentObservations 
+          }
         : l
     ));
+
+    toast({
+      title: "Sucesso",
+      description: `${paymentLancamento.tipo === "receita" ? "Recebimento" : "Pagamento"} registrado com sucesso`
+    });
+
+    setIsPaymentDialogOpen(false);
+    setPaymentLancamento(null);
   };
 
   return (
@@ -207,7 +253,7 @@ export default function Lancamentos() {
           
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="financial-gradient">
+              <Button className="financial-gradient hover:opacity-90 transition-opacity">
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Lançamento
               </Button>
@@ -464,14 +510,25 @@ export default function Lancamentos() {
                         >
                           {lancamento.status === "pendente" ? "Pendente" : "Pago/Recebido"}
                         </Badge>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => toggleStatus(lancamento.id)}
-                          className="text-xs px-2 py-1"
-                        >
-                          {lancamento.status === "pendente" ? "Marcar como Pago" : "Marcar como Pendente"}
-                        </Button>
+                        {lancamento.status === "pendente" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => toggleStatus(lancamento)}
+                            className="text-xs px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                          >
+                            {lancamento.tipo === "receita" ? "Registrar Recebimento" : "Registrar Pagamento"}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => toggleStatus(lancamento)}
+                            className="text-xs px-2 py-1"
+                          >
+                            Marcar como Pendente
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
@@ -505,6 +562,79 @@ export default function Lancamentos() {
             )}
           </CardContent>
         </Card>
+
+        {/* Modal de Registrar Pagamento/Recebimento */}
+        <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {paymentLancamento?.tipo === "receita" ? "Registrar Recebimento" : "Registrar Pagamento"}
+              </DialogTitle>
+              <DialogDescription>
+                Registre a data e observações do {paymentLancamento?.tipo === "receita" ? "recebimento" : "pagamento"}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="font-medium">{paymentLancamento?.descricao}</p>
+                <p className="text-sm text-muted-foreground">
+                  Valor: {paymentLancamento && formatCurrency(paymentLancamento.valor)}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Data do {paymentLancamento?.tipo === "receita" ? "Recebimento" : "Pagamento"} *</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {paymentDate ? format(paymentDate, "PPP", { locale: ptBR }) : "Selecione a data"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={paymentDate}
+                      onSelect={setPaymentDate}
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="payment-obs">Observações</Label>
+                <Textarea
+                  id="payment-obs"
+                  placeholder="Observações sobre o pagamento/recebimento..."
+                  value={paymentObservations}
+                  onChange={(e) => setPaymentObservations(e.target.value)}
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsPaymentDialogOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handlePaymentSubmit}
+                  className="financial-gradient"
+                >
+                  Confirmar {paymentLancamento?.tipo === "receita" ? "Recebimento" : "Pagamento"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
