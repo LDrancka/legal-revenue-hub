@@ -9,6 +9,8 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
 import LancamentosFiltered from "./pages/LancamentosFiltered";
+import Transferencias from "./pages/Transferencias";
+import Clientes from "./pages/Clientes";
 import Convites from "./pages/Convites";
 import Cases from "./pages/Cases";
 import Reports from "./pages/Reports";
@@ -48,6 +50,26 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <LancamentosFiltered />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/transferencias" 
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Transferencias />
+                  </Layout>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/clientes" 
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Clientes />
+                  </Layout>
                 </ProtectedRoute>
               } 
             />
