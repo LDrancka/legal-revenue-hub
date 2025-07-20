@@ -1,7 +1,11 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/Layout";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -12,23 +16,31 @@ import {
   Plus
 } from "lucide-react";
 
-const Dashboard = () => {
-  // Mock data - será substituído por dados reais
-  const financialData = {
-    today: {
-      toReceive: 15000,
-      toPay: 8500
-    },
-    thisMonth: {
-      received: 125000,
-      paid: 85000,
-      provisioned: 45000
-    },
-    overdue: {
-      amount: 23000,
-      count: 8
-    }
+interface DashboardData {
+  today: {
+    toReceive: number;
+    toPay: number;
   };
+  thisMonth: {
+    received: number;
+    paid: number;
+    provisioned: number;
+  };
+  overdue: {
+    amount: number;
+    count: number;
+  };
+}
+
+const Dashboard = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [dashboardData, setDashboardData] = useState<DashboardData>({
+    today: { toReceive: 0, toPay: 0 },
+    thisMonth: { received: 0, paid: 0, provisioned: 0 },
+    overdue: { amount: 0, count: 0 }
+  });
+  const [isLoading, setIsLoading] = useState(true);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -36,6 +48,113 @@ const Dashboard = () => {
       currency: 'BRL'
     }).format(value);
   };
+
+  const fetchDashboardData = async () => {
+    if (!user) return;
+
+    try {
+      setIsLoading(true);
+      
+      // Data de hoje
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(today);
+      todayEnd.setHours(23, 59, 59, 999);
+      
+      // Início e fim do mês atual
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      endOfMonth.setHours(23, 59, 59, 999);
+
+      // Buscar transações
+      const { data: transactions, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Erro ao buscar transações:', error);
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: "Erro ao carregar dados do dashboard"
+        });
+        return;
+      }
+
+      // Calcular dados do dashboard
+      const data: DashboardData = {
+        today: { toReceive: 0, toPay: 0 },
+        thisMonth: { received: 0, paid: 0, provisioned: 0 },
+        overdue: { amount: 0, count: 0 }
+      };
+
+      transactions?.forEach(transaction => {
+        const dueDate = new Date(transaction.due_date);
+        const amount = Number(transaction.amount);
+        const isPaid = transaction.status === 'pago';
+        const isReceivable = transaction.type === 'receita';
+        const isPayable = transaction.type === 'despesa';
+
+        // Dados de hoje
+        if (dueDate >= today && dueDate <= todayEnd) {
+          if (isReceivable && !isPaid) {
+            data.today.toReceive += amount;
+          }
+          if (isPayable && !isPaid) {
+            data.today.toPay += amount;
+          }
+        }
+
+        // Dados do mês
+        if (dueDate >= startOfMonth && dueDate <= endOfMonth) {
+          if (isReceivable) {
+            if (isPaid) {
+              data.thisMonth.received += amount;
+            } else {
+              data.thisMonth.provisioned += amount;
+            }
+          }
+          if (isPayable && isPaid) {
+            data.thisMonth.paid += amount;
+          }
+        }
+
+        // Dados em atraso (vencimento anterior a hoje e não pago)
+        if (dueDate < today && !isPaid) {
+          data.overdue.amount += amount;
+          data.overdue.count += 1;
+        }
+      });
+
+      setDashboardData(data);
+    } catch (error) {
+      console.error('Erro ao buscar dados:', error);
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Erro inesperado ao carregar dashboard"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchDashboardData();
+    }
+  }, [user]);
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -69,7 +188,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {formatCurrency(financialData.today.toReceive)}
+                {formatCurrency(dashboardData.today.toReceive)}
               </div>
               <p className="text-xs text-muted-foreground">
                 Valores com vencimento hoje
@@ -86,7 +205,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                {formatCurrency(financialData.today.toPay)}
+                {formatCurrency(dashboardData.today.toPay)}
               </div>
               <p className="text-xs text-muted-foreground">
                 Valores com vencimento hoje
@@ -106,7 +225,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {formatCurrency(financialData.thisMonth.received)}
+                {formatCurrency(dashboardData.thisMonth.received)}
               </div>
               <Badge className="status-badge status-paid mt-2">
                 Realizado
@@ -123,7 +242,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                {formatCurrency(financialData.thisMonth.paid)}
+                {formatCurrency(dashboardData.thisMonth.paid)}
               </div>
               <Badge className="status-badge status-paid mt-2">
                 Realizado
@@ -140,7 +259,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-yellow-600">
-                {formatCurrency(financialData.thisMonth.provisioned)}
+                {formatCurrency(dashboardData.thisMonth.provisioned)}
               </div>
               <Badge className="status-badge status-pending mt-2">
                 A Receber
@@ -158,7 +277,7 @@ const Dashboard = () => {
                   Inadimplência
                 </CardTitle>
                 <CardDescription className="text-red-600 dark:text-red-300">
-                  {financialData.overdue.count} lançamentos em atraso
+                  {dashboardData.overdue.count} lançamentos em atraso
                 </CardDescription>
               </div>
               <AlertTriangle className="h-6 w-6 text-red-600" />
@@ -166,7 +285,7 @@ const Dashboard = () => {
             <CardContent>
               <div className="flex items-center justify-between">
                 <div className="text-3xl font-bold text-red-700 dark:text-red-400">
-                  {formatCurrency(financialData.overdue.amount)}
+                  {formatCurrency(dashboardData.overdue.amount)}
                 </div>
                 <Button variant="outline" size="sm" className="border-red-300 text-red-700 hover:bg-red-50">
                   Ver Detalhes
