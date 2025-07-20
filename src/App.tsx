@@ -7,8 +7,9 @@ import { AuthProvider } from "./hooks/useAuth";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
-import Lancamentos from "./pages/Lancamentos";
+import LancamentosFiltered from "./pages/LancamentosFiltered";
 import Convites from "./pages/Convites";
+import Cases from "./pages/Cases";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -44,7 +45,15 @@ const App = () => (
               path="/lancamentos" 
               element={
                 <ProtectedRoute>
-                  <Lancamentos />
+                  <LancamentosFiltered />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/cases" 
+              element={
+                <ProtectedRoute>
+                  <Cases />
                 </ProtectedRoute>
               } 
             />

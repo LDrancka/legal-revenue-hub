@@ -39,7 +39,7 @@ const menuItems = [
   {
     title: "Casos",
     icon: FolderOpen,
-    href: "/casos"
+    href: "/cases"
   },
   {
     title: "Transferências",
