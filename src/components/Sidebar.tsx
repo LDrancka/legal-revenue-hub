@@ -25,7 +25,7 @@ const menuItems = [
   {
     title: "Contas",
     icon: Wallet,
-    href: "/contas"
+    href: "/accounts"
   },
   {
     title: "Lançamentos",
