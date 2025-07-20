@@ -12,8 +12,11 @@ import {
   DollarSign,
   FolderOpen,
   Users,
-  Receipt
+  Receipt,
+  LogOut,
+  User
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 const menuItems = [
   {
@@ -58,6 +61,7 @@ const menuItems = [
 
 export const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
+  const { user, signOut } = useAuth();
 
   return (
     <aside className={cn(
@@ -113,8 +117,24 @@ export const Sidebar = () => {
         })}
       </nav>
 
-      {/* Settings */}
-      <div className="p-4 border-t border-border">
+      {/* User Info & Actions */}
+      <div className="p-4 border-t border-border space-y-2">
+        {!collapsed && (
+          <div className="flex items-center space-x-2 mb-3">
+            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+              <User className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground truncate">
+                {user?.email?.split('@')[0]}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                {user?.email}
+              </p>
+            </div>
+          </div>
+        )}
+        
         <Button
           variant="ghost"
           className={cn(
@@ -124,6 +144,18 @@ export const Sidebar = () => {
         >
           <Settings className={cn("h-4 w-4", !collapsed && "mr-2")} />
           {!collapsed && <span>Configurações</span>}
+        </Button>
+        
+        <Button
+          variant="ghost"
+          className={cn(
+            "w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10",
+            collapsed && "px-2"
+          )}
+          onClick={signOut}
+        >
+          <LogOut className={cn("h-4 w-4", !collapsed && "mr-2")} />
+          {!collapsed && <span>Sair</span>}
         </Button>
       </div>
     </aside>
