@@ -14,7 +14,8 @@ import {
   Users,
   Receipt,
   LogOut,
-  User
+  User,
+  Mail
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -59,9 +60,18 @@ const menuItems = [
   }
 ];
 
+const adminMenuItems = [
+  {
+    title: "Convites",
+    icon: Mail,
+    href: "/convites",
+    active: window.location.pathname === "/convites"
+  }
+];
+
 export const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin } = useAuth();
 
   return (
     <aside className={cn(
@@ -115,6 +125,39 @@ export const Sidebar = () => {
             </Button>
           );
         })}
+
+        {/* Admin-only items */}
+        {isAdmin() && (
+          <>
+            {!collapsed && (
+              <div className="pt-4 pb-2">
+                <div className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Administração
+                </div>
+              </div>
+            )}
+            {adminMenuItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Button
+                  key={item.href}
+                  variant={item.active ? "default" : "ghost"}
+                  className={cn(
+                    "w-full justify-start",
+                    collapsed && "px-2",
+                    item.active && "financial-gradient text-white"
+                  )}
+                  asChild
+                >
+                  <a href={item.href} className="flex items-center w-full text-inherit no-underline">
+                    <Icon className={cn("h-4 w-4", !collapsed && "mr-2")} />
+                    {!collapsed && <span>{item.title}</span>}
+                  </a>
+                </Button>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       {/* User Info & Actions */}

@@ -8,6 +8,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
 import Lancamentos from "./pages/Lancamentos";
+import Convites from "./pages/Convites";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -43,6 +44,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Lancamentos />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/convites" 
+              element={
+                <ProtectedRoute>
+                  <Convites />
                 </ProtectedRoute>
               } 
             />
