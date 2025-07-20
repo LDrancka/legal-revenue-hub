@@ -26,8 +26,8 @@ interface Transfer {
   amount: number;
   description: string;
   created_at: string;
-  from_account?: Account;
-  to_account?: Account;
+  from_account?: { name: string; balance: number; type: string };
+  to_account?: { name: string; balance: number; type: string };
 }
 
 export default function Transferencias() {
@@ -154,13 +154,20 @@ export default function Transferencias() {
           .from('accounts')
           .update({ balance: fromAccount.balance - amount })
           .eq('id', formData.from_account_id),
-        // Creditar na conta destino  
+        // Creditar na conta destino (update manual)
         supabase
           .from('accounts')
-          .update({ 
-            balance: supabase.sql`balance + ${amount}`
-          })
+          .select('balance')
           .eq('id', formData.to_account_id)
+          .single()
+          .then(({ data }) => {
+            if (data) {
+              supabase
+                .from('accounts')
+                .update({ balance: data.balance + amount })
+                .eq('id', formData.to_account_id);
+            }
+          })
       ]);
 
       toast({

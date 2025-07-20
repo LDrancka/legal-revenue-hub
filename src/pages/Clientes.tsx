@@ -43,67 +43,11 @@ export default function Clientes() {
     status: "ativo" as "ativo" | "inativo"
   });
 
-  // Primeiro, vamos criar a tabela via migration
-  const createClientsTable = async () => {
-    const { error } = await supabase.rpc('exec_sql', {
-      sql: `
-        CREATE TABLE IF NOT EXISTS public.clients (
-          id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-          user_id UUID NOT NULL,
-          name TEXT NOT NULL,
-          email TEXT,
-          phone TEXT,
-          document TEXT,
-          address TEXT,
-          notes TEXT,
-          status TEXT NOT NULL DEFAULT 'ativo',
-          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-        );
-
-        ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
-
-        DROP POLICY IF EXISTS "Users can view their own clients" ON public.clients;
-        CREATE POLICY "Users can view their own clients" 
-        ON public.clients FOR SELECT 
-        USING (auth.uid() = user_id);
-
-        DROP POLICY IF EXISTS "Users can create their own clients" ON public.clients;
-        CREATE POLICY "Users can create their own clients" 
-        ON public.clients FOR INSERT 
-        WITH CHECK (auth.uid() = user_id);
-
-        DROP POLICY IF EXISTS "Users can update their own clients" ON public.clients;
-        CREATE POLICY "Users can update their own clients" 
-        ON public.clients FOR UPDATE 
-        USING (auth.uid() = user_id);
-
-        DROP POLICY IF EXISTS "Users can delete their own clients" ON public.clients;
-        CREATE POLICY "Users can delete their own clients" 
-        ON public.clients FOR DELETE 
-        USING (auth.uid() = user_id);
-
-        DROP TRIGGER IF EXISTS update_clients_updated_at ON public.clients;
-        CREATE TRIGGER update_clients_updated_at
-        BEFORE UPDATE ON public.clients
-        FOR EACH ROW
-        EXECUTE FUNCTION public.update_updated_at_column();
-      `
-    });
-    
-    if (error) {
-      console.warn('Erro ao criar tabela de clientes (pode já existir):', error);
-    }
-  };
-
   const loadClients = async () => {
     setLoading(true);
     try {
-      // Tentar criar tabela primeiro (vai ignorar se já existir)
-      await createClientsTable();
-
       const { data, error } = await supabase
-        .from('clients')
+        .from('clients' as any)
         .select('*')
         .order('name');
 
@@ -135,7 +79,7 @@ export default function Clientes() {
     try {
       if (editingId) {
         const { error } = await supabase
-          .from('clients')
+          .from('clients' as any)
           .update({
             name: formData.name,
             email: formData.email || null,
@@ -151,7 +95,7 @@ export default function Clientes() {
         toast({ title: "Sucesso", description: "Cliente atualizado!" });
       } else {
         const { error } = await supabase
-          .from('clients')
+          .from('clients' as any)
           .insert([{
             user_id: user.id,
             name: formData.name,
@@ -201,7 +145,7 @@ export default function Clientes() {
     setLoading(true);
     try {
       const { error } = await supabase
-        .from('clients')
+        .from('clients' as any)
         .delete()
         .eq('id', id);
 
