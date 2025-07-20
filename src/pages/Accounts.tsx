@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Building2, Wallet, CreditCard, Edit, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 interface Account {
   id: string;
@@ -16,47 +18,14 @@ interface Account {
   type: "bank" | "cash" | "investment";
   balance: number;
   description?: string;
+  user_id: string;
 }
 
 const Accounts = () => {
   const { toast } = useToast();
-  const [accounts, setAccounts] = useState<Account[]>(() => {
-    // Carregar contas do localStorage
-    try {
-      const savedAccounts = localStorage.getItem('accounts');
-      if (savedAccounts) {
-        return JSON.parse(savedAccounts);
-      }
-    } catch (error) {
-      console.log('Erro ao carregar contas:', error);
-    }
-    
-    // Contas padrão se não houver no localStorage
-    return [
-      {
-        id: "1",
-        name: "Conta Corrente Principal",
-        type: "bank",
-        balance: 125000.00,
-        description: "Conta corrente para movimentação diária"
-      },
-      {
-        id: "2",
-        name: "Caixa Escritório",
-        type: "cash",
-        balance: 2500.00,
-        description: "Dinheiro em espécie no escritório"
-      },
-      {
-        id: "3",
-        name: "Conta Poupança",
-        type: "investment",
-        balance: 50000.00,
-        description: "Reserva de emergência"
-      }
-    ];
-  });
-
+  const { user } = useAuth();
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [formData, setFormData] = useState({
@@ -65,6 +34,43 @@ const Accounts = () => {
     balance: "",
     description: ""
   });
+
+  useEffect(() => {
+    if (user) {
+      fetchAccounts();
+    }
+  }, [user]);
+
+  const fetchAccounts = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', user?.id);
+
+      if (error) {
+        console.error('Erro ao buscar contas:', error);
+        toast({
+          title: "Erro",
+          description: "Erro ao carregar contas",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setAccounts(data || []);
+    } catch (error) {
+      console.error('Erro ao buscar contas:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar contas",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -95,36 +101,71 @@ const Accounts = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!user) return;
+
     const accountData = {
-      ...formData,
+      name: formData.name,
+      type: formData.type,
       balance: parseFloat(formData.balance) || 0,
-      id: editingAccount?.id || Math.random().toString(36).substr(2, 9)
+      description: formData.description || null,
+      user_id: user.id
     };
 
-    if (editingAccount) {
-      const updatedAccounts = accounts.map(acc => 
-        acc.id === editingAccount.id ? accountData : acc
-      );
-      setAccounts(updatedAccounts);
-      localStorage.setItem('accounts', JSON.stringify(updatedAccounts));
+    try {
+      if (editingAccount) {
+        const { error } = await supabase
+          .from('accounts')
+          .update(accountData)
+          .eq('id', editingAccount.id);
+
+        if (error) {
+          console.error('Erro ao atualizar conta:', error);
+          toast({
+            title: "Erro",
+            description: "Erro ao atualizar conta",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        toast({
+          title: "Conta atualizada",
+          description: "A conta foi atualizada com sucesso."
+        });
+      } else {
+        const { error } = await supabase
+          .from('accounts')
+          .insert([accountData]);
+
+        if (error) {
+          console.error('Erro ao criar conta:', error);
+          toast({
+            title: "Erro",
+            description: "Erro ao criar conta",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        toast({
+          title: "Conta criada",
+          description: "Nova conta foi criada com sucesso."
+        });
+      }
+
+      resetForm();
+      fetchAccounts();
+    } catch (error) {
+      console.error('Erro ao salvar conta:', error);
       toast({
-        title: "Conta atualizada",
-        description: "A conta foi atualizada com sucesso."
-      });
-    } else {
-      const newAccounts = [...accounts, accountData];
-      setAccounts(newAccounts);
-      localStorage.setItem('accounts', JSON.stringify(newAccounts));
-      toast({
-        title: "Conta criada",
-        description: "Nova conta foi criada com sucesso."
+        title: "Erro",
+        description: "Erro ao salvar conta",
+        variant: "destructive"
       });
     }
-
-    resetForm();
   };
 
   const handleEdit = (account: Account) => {
@@ -138,14 +179,37 @@ const Accounts = () => {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (accountId: string) => {
-    const updatedAccounts = accounts.filter(acc => acc.id !== accountId);
-    setAccounts(updatedAccounts);
-    localStorage.setItem('accounts', JSON.stringify(updatedAccounts));
-    toast({
-      title: "Conta excluída",
-      description: "A conta foi excluída com sucesso."
-    });
+  const handleDelete = async (accountId: string) => {
+    try {
+      const { error } = await supabase
+        .from('accounts')
+        .delete()
+        .eq('id', accountId);
+
+      if (error) {
+        console.error('Erro ao excluir conta:', error);
+        toast({
+          title: "Erro",
+          description: "Erro ao excluir conta",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Conta excluída",
+        description: "A conta foi excluída com sucesso."
+      });
+
+      fetchAccounts();
+    } catch (error) {
+      console.error('Erro ao excluir conta:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao excluir conta",
+        variant: "destructive"
+      });
+    }
   };
 
   const resetForm = () => {
@@ -155,6 +219,18 @@ const Accounts = () => {
   };
 
   const totalBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="p-6">
+          <div className="flex justify-center items-center h-64">
+            <p>Carregando contas...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -249,7 +325,7 @@ const Accounts = () => {
             <CardTitle>Total Geral</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-financial-green">
+            <div className="text-2xl font-bold">
               {formatCurrency(totalBalance)}
             </div>
           </CardContent>
@@ -288,7 +364,7 @@ const Accounts = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <div className="text-2xl font-bold text-financial-green">
+                  <div className="text-2xl font-bold">
                     {formatCurrency(account.balance)}
                   </div>
                   {account.description && (
