@@ -22,7 +22,7 @@ interface Client {
   created_at: string;
 }
 
-export default function Clientes() {
+export default function Contatos() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [clients, setClients] = useState<Client[]>([]);
@@ -45,7 +45,7 @@ export default function Clientes() {
     setLoading(true);
     try {
       // For now, use simulated data until Supabase types are updated
-      const mockClients: Client[] = [
+      const mockContacts: Client[] = [
         {
           id: "1",
           name: "João Silva",
@@ -53,7 +53,7 @@ export default function Clientes() {
           phone: "(11) 99999-9999",
           document: "123.456.789-00",
           address: "Rua A, 123",
-          notes: "Cliente VIP",
+          notes: "Contato VIP",
           status: "ativo",
           created_at: new Date().toISOString()
         },
@@ -72,12 +72,12 @@ export default function Clientes() {
       
       // Simulate API delay
       setTimeout(() => {
-        setClients(mockClients);
+        setClients(mockContacts);
         setLoading(false);
       }, 500);
       
     } catch (error: any) {
-      console.error('Erro ao carregar clientes:', error);
+      console.error('Erro ao carregar contatos:', error);
       setClients([]);
       setLoading(false);
       toast({
@@ -106,7 +106,7 @@ export default function Clientes() {
             ? { ...client, ...formData, id: editingId }
             : client
         ));
-        toast({ title: "Sucesso", description: "Cliente atualizado!" });
+        toast({ title: "Sucesso", description: "Contato atualizado!" });
       } else {
         // Add new client to mock data
         const newClient: Client = {
@@ -115,15 +115,15 @@ export default function Clientes() {
           created_at: new Date().toISOString()
         };
         setClients(prev => [...prev, newClient]);
-        toast({ title: "Sucesso", description: "Cliente criado!" });
+        toast({ title: "Sucesso", description: "Contato criado!" });
       }
 
       resetForm();
     } catch (error: any) {
-      console.error('Erro ao salvar cliente:', error);
+      console.error('Erro ao salvar contato:', error);
       toast({
         title: "Erro",
-        description: "Erro ao salvar cliente",
+        description: "Erro ao salvar contato",
         variant: "destructive",
       });
     } finally {
@@ -146,17 +146,17 @@ export default function Clientes() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este cliente?')) return;
+    if (!confirm('Tem certeza que deseja excluir este contato?')) return;
 
     setLoading(true);
     try {
       setClients(prev => prev.filter(client => client.id !== id));
-      toast({ title: "Sucesso", description: "Cliente excluído!" });
+      toast({ title: "Sucesso", description: "Contato excluído!" });
     } catch (error: any) {
-      console.error('Erro ao excluir cliente:', error);
+      console.error('Erro ao excluir contato:', error);
       toast({
         title: "Erro",
-        description: "Erro ao excluir cliente",
+        description: "Erro ao excluir contato",
         variant: "destructive",
       });
     } finally {
@@ -188,19 +188,19 @@ export default function Clientes() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Clientes</h1>
+        <h1 className="text-3xl font-bold">Contatos</h1>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={() => resetForm()}>
               <Plus className="h-4 w-4 mr-2" />
-              Novo Cliente
+              Novo Contato
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>{editingId ? "Editar Cliente" : "Novo Cliente"}</DialogTitle>
+              <DialogTitle>{editingId ? "Editar Contato" : "Novo Contato"}</DialogTitle>
               <DialogDescription>
-                {editingId ? "Atualize as informações do cliente" : "Adicione um novo cliente ao sistema"}
+                {editingId ? "Atualize as informações do contato" : "Adicione um novo contato ao sistema"}
               </DialogDescription>
             </DialogHeader>
             
@@ -212,7 +212,7 @@ export default function Clientes() {
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    placeholder="Nome completo"
+                    placeholder="Nome do contato"
                     required
                   />
                 </div>
@@ -235,7 +235,7 @@ export default function Clientes() {
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
-                    placeholder="cliente@email.com"
+                    placeholder="contato@email.com"
                   />
                 </div>
                 <div>
@@ -278,7 +278,7 @@ export default function Clientes() {
                   id="notes"
                   value={formData.notes}
                   onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                  placeholder="Observações sobre o cliente"
+                  placeholder="Observações sobre o contato"
                   rows={3}
                 />
               </div>
@@ -288,7 +288,7 @@ export default function Clientes() {
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={loading}>
-                  {loading ? "Salvando..." : editingId ? "Atualizar" : "Criar"} Cliente
+                  {loading ? "Salvando..." : editingId ? "Atualizar" : "Criar"} Contato
                 </Button>
               </DialogFooter>
             </form>
@@ -300,7 +300,7 @@ export default function Clientes() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
         <Input
-          placeholder="Buscar clientes por nome, email, telefone ou documento..."
+          placeholder="Buscar contatos por nome, email, telefone ou documento..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10"
@@ -321,10 +321,10 @@ export default function Clientes() {
               <div className="text-center">
                 <Users className="mx-auto h-12 w-12 text-muted-foreground" />
                 <h3 className="mt-2 text-sm font-semibold text-foreground">
-                  {searchTerm ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}
+                  {searchTerm ? "Nenhum contato encontrado" : "Nenhum contato cadastrado"}
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {searchTerm ? "Tente ajustar os termos de busca." : "Comece criando seu primeiro cliente."}
+                  {searchTerm ? "Tente ajustar os termos de busca." : "Comece criando seu primeiro contato."}
                 </p>
               </div>
             </CardContent>

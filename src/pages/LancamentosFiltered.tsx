@@ -91,6 +91,14 @@ interface Case {
   status: string;
 }
 
+interface Contact {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  status: string;
+}
+
 const LancamentosFiltered = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -98,6 +106,7 @@ const LancamentosFiltered = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [cases, setCases] = useState<Case[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [selectedTransactionAttachments, setSelectedTransactionAttachments] = useState<Attachment[]>([]);
@@ -124,6 +133,7 @@ const LancamentosFiltered = () => {
     account_id: "",
     payment_account_id: "",
     case_id: "",
+    contact_id: "",
     category_id: "",
     observations: "",
     payment_observations: "",
@@ -211,6 +221,14 @@ const LancamentosFiltered = () => {
     }
   };
 
+  const fetchContacts = async () => {
+    // Temporariamente usar dados simulados até tipos serem atualizados
+    setContacts([
+      { id: "1", name: "João Silva", email: "joao@email.com", phone: "(11) 99999-9999", status: "ativo" },
+      { id: "2", name: "Maria Santos", email: "maria@email.com", phone: "(11) 88888-8888", status: "ativo" }
+    ]);
+  };
+
   const fetchCategories = async () => {
     // Temporariamente desabilitado até tipos serem atualizados
     setCategories([
@@ -230,6 +248,7 @@ const LancamentosFiltered = () => {
       fetchTransactions();
       fetchAccounts();
       fetchCases();
+      fetchContacts();
       fetchCategories();
     }
   }, [user]);
@@ -237,6 +256,16 @@ const LancamentosFiltered = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
+    // Validar contato obrigatório
+    if (!formData.contact_id) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "O contato é obrigatório para criar um lançamento."
+      });
+      return;
+    }
 
     try {
       const transactionData = {
@@ -303,6 +332,7 @@ const LancamentosFiltered = () => {
         account_id: "",
         payment_account_id: "",
         case_id: "",
+        contact_id: "",
         category_id: "",
         observations: "",
         payment_observations: "",
@@ -334,6 +364,7 @@ const LancamentosFiltered = () => {
       account_id: transaction.account_id || "",
       payment_account_id: transaction.payment_account_id || "",
       case_id: transaction.case_id || "",
+      contact_id: "", // Temporariamente vazio até migrations
       category_id: transaction.category_id || "",
       observations: transaction.observations || "",
       payment_observations: transaction.payment_observations || "",
@@ -533,39 +564,56 @@ const LancamentosFiltered = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="account_id">Conta</Label>
-                      <Select value={formData.account_id} onValueChange={(value) => setFormData({...formData, account_id: value})}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione uma conta" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {accounts.map(account => (
-                            <SelectItem key={account.id} value={account.id}>
-                              {account.name} - {formatCurrency(account.balance)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="case_id">Caso/Processo</Label>
-                      <Select value={formData.case_id} onValueChange={(value) => setFormData({...formData, case_id: value})}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione um caso" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {cases.map(caseItem => (
-                            <SelectItem key={caseItem.id} value={caseItem.id}>
-                              {caseItem.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                     <div className="space-y-2">
+                       <Label htmlFor="contact_id">Contato *</Label>
+                       <Select value={formData.contact_id} onValueChange={(value) => setFormData({...formData, contact_id: value})} required>
+                         <SelectTrigger>
+                           <SelectValue placeholder="Selecione um contato" />
+                         </SelectTrigger>
+                         <SelectContent>
+                           {contacts.map(contact => (
+                             <SelectItem key={contact.id} value={contact.id}>
+                               {contact.name}
+                               {contact.email && ` - ${contact.email}`}
+                             </SelectItem>
+                           ))}
+                         </SelectContent>
+                       </Select>
+                     </div>
+                     
+                     <div className="space-y-2">
+                       <Label htmlFor="account_id">Conta</Label>
+                       <Select value={formData.account_id} onValueChange={(value) => setFormData({...formData, account_id: value})}>
+                         <SelectTrigger>
+                           <SelectValue placeholder="Selecione uma conta" />
+                         </SelectTrigger>
+                         <SelectContent>
+                           {accounts.map(account => (
+                             <SelectItem key={account.id} value={account.id}>
+                               {account.name} - {formatCurrency(account.balance)}
+                             </SelectItem>
+                           ))}
+                         </SelectContent>
+                       </Select>
+                     </div>
+                     
+                     <div className="space-y-2">
+                       <Label htmlFor="case_id">Caso/Processo</Label>
+                       <Select value={formData.case_id} onValueChange={(value) => setFormData({...formData, case_id: value})}>
+                         <SelectTrigger>
+                           <SelectValue placeholder="Selecione um caso" />
+                         </SelectTrigger>
+                         <SelectContent>
+                           {cases.map(caseItem => (
+                             <SelectItem key={caseItem.id} value={caseItem.id}>
+                               {caseItem.name}
+                             </SelectItem>
+                           ))}
+                         </SelectContent>
+                       </Select>
+                     </div>
+                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
