@@ -10,6 +10,7 @@ import Accounts from "./pages/Accounts";
 import LancamentosFiltered from "./pages/LancamentosFiltered";
 import Convites from "./pages/Convites";
 import Cases from "./pages/Cases";
+import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -54,6 +55,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Cases />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/relatorios" 
+              element={
+                <ProtectedRoute>
+                  <Reports />
                 </ProtectedRoute>
               } 
             />

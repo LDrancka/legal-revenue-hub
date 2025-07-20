@@ -28,8 +28,16 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  X
+  X,
+  Download,
+  Upload,
+  Tags,
+  Repeat
 } from "lucide-react";
+import { CategoriesDialog } from "@/components/CategoriesDialog";
+import { FileUpload } from "@/components/FileUpload";
+import { useRecurringTransactions } from "@/hooks/useRecurringTransactions";
+import { exportToExcel, exportToCSV } from "@/utils/exportUtils";
 
 interface Transaction {
   id: string;
