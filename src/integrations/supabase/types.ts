@@ -14,7 +14,215 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      accounts: {
+        Row: {
+          balance: number
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          type: Database["public"]["Enums"]["account_type"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          type: Database["public"]["Enums"]["account_type"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          type?: Database["public"]["Enums"]["account_type"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      cases: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          status: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          status?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          status?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      transaction_splits: {
+        Row: {
+          account_id: string
+          amount: number
+          created_at: string
+          id: string
+          percentage: number
+          transaction_id: string
+        }
+        Insert: {
+          account_id: string
+          amount: number
+          created_at?: string
+          id?: string
+          percentage: number
+          transaction_id: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          created_at?: string
+          id?: string
+          percentage?: number
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_splits_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_splits_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transactions: {
+        Row: {
+          account_id: string | null
+          amount: number
+          case_id: string | null
+          created_at: string
+          description: string
+          due_date: string
+          id: string
+          is_recurring: boolean
+          observations: string | null
+          payment_account_id: string | null
+          payment_date: string | null
+          payment_observations: string | null
+          recurrence_count: number | null
+          recurrence_end_date: string | null
+          recurrence_frequency:
+            | Database["public"]["Enums"]["recurrence_frequency"]
+            | null
+          recurrence_original_id: string | null
+          status: Database["public"]["Enums"]["transaction_status"]
+          type: Database["public"]["Enums"]["transaction_type"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          amount: number
+          case_id?: string | null
+          created_at?: string
+          description: string
+          due_date: string
+          id?: string
+          is_recurring?: boolean
+          observations?: string | null
+          payment_account_id?: string | null
+          payment_date?: string | null
+          payment_observations?: string | null
+          recurrence_count?: number | null
+          recurrence_end_date?: string | null
+          recurrence_frequency?:
+            | Database["public"]["Enums"]["recurrence_frequency"]
+            | null
+          recurrence_original_id?: string | null
+          status?: Database["public"]["Enums"]["transaction_status"]
+          type: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string | null
+          amount?: number
+          case_id?: string | null
+          created_at?: string
+          description?: string
+          due_date?: string
+          id?: string
+          is_recurring?: boolean
+          observations?: string | null
+          payment_account_id?: string | null
+          payment_date?: string | null
+          payment_observations?: string | null
+          recurrence_count?: number | null
+          recurrence_end_date?: string | null
+          recurrence_frequency?:
+            | Database["public"]["Enums"]["recurrence_frequency"]
+            | null
+          recurrence_original_id?: string | null
+          status?: Database["public"]["Enums"]["transaction_status"]
+          type?: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_payment_account_id_fkey"
+            columns: ["payment_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_recurrence_original_id_fkey"
+            columns: ["recurrence_original_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +231,15 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      account_type: "bank" | "cash" | "investment"
+      recurrence_frequency:
+        | "mensal"
+        | "bimestral"
+        | "trimestral"
+        | "semestral"
+        | "anual"
+      transaction_status: "pendente" | "pago"
+      transaction_type: "receita" | "despesa"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +366,17 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      account_type: ["bank", "cash", "investment"],
+      recurrence_frequency: [
+        "mensal",
+        "bimestral",
+        "trimestral",
+        "semestral",
+        "anual",
+      ],
+      transaction_status: ["pendente", "pago"],
+      transaction_type: ["receita", "despesa"],
+    },
   },
 } as const
