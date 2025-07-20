@@ -20,17 +20,19 @@ const menuItems = [
     title: "Dashboard",
     icon: LayoutDashboard,
     href: "/",
-    active: true
+    active: window.location.pathname === "/"
   },
   {
     title: "Contas",
     icon: Wallet,
-    href: "/accounts"
+    href: "/accounts",
+    active: window.location.pathname === "/accounts"
   },
   {
     title: "Lançamentos",
     icon: Receipt,
-    href: "/lancamentos"
+    href: "/lancamentos",
+    active: window.location.pathname === "/lancamentos"
   },
   {
     title: "Casos",
