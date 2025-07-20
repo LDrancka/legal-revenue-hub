@@ -103,6 +103,7 @@ export default function Lancamentos() {
   const [paymentLancamento, setPaymentLancamento] = useState<any>(null);
   const [paymentDate, setPaymentDate] = useState<Date>();
   const [paymentObservations, setPaymentObservations] = useState("");
+  const [paymentAccount, setPaymentAccount] = useState("");
   const { toast } = useToast();
 
   // Form state
@@ -114,7 +115,11 @@ export default function Lancamentos() {
     caso: "",
     vencimento: new Date(),
     recorrente: false,
-    observacoes: ""
+    frequencia: "",
+    repeticoes: "",
+    dataFinal: undefined as Date | undefined,
+    observacoes: "",
+    rateios: [] as Array<{id: string, descricao: string, percentual: number}>
   });
 
   const filteredLancamentos = lancamentos.filter((lancamento) => {
@@ -133,6 +138,74 @@ export default function Lancamentos() {
     }).format(value);
   };
 
+  // Função para calcular data final baseada na frequência e repetições
+  const calculateEndDate = (startDate: Date, frequency: string, repetitions: number) => {
+    const date = new Date(startDate);
+    
+    switch (frequency) {
+      case 'mensal':
+        date.setMonth(date.getMonth() + repetitions);
+        break;
+      case 'bimestral':
+        date.setMonth(date.getMonth() + (repetitions * 2));
+        break;
+      case 'trimestral':
+        date.setMonth(date.getMonth() + (repetitions * 3));
+        break;
+      case 'semestral':
+        date.setMonth(date.getMonth() + (repetitions * 6));
+        break;
+      case 'anual':
+        date.setFullYear(date.getFullYear() + repetitions);
+        break;
+      default:
+        return undefined;
+    }
+    
+    return date;
+  };
+
+  // Função para gerar lançamentos recorrentes
+  const generateRecurringLancamentos = (baseData: any) => {
+    const generatedLancamentos = [];
+    const startDate = new Date(baseData.vencimento);
+    const repetitions = parseInt(baseData.repeticoes) || 1;
+    
+    for (let i = 0; i < repetitions; i++) {
+      const lancamentoDate = new Date(startDate);
+      
+      switch (baseData.frequencia) {
+        case 'mensal':
+          lancamentoDate.setMonth(startDate.getMonth() + i);
+          break;
+        case 'bimestral':
+          lancamentoDate.setMonth(startDate.getMonth() + (i * 2));
+          break;
+        case 'trimestral':
+          lancamentoDate.setMonth(startDate.getMonth() + (i * 3));
+          break;
+        case 'semestral':
+          lancamentoDate.setMonth(startDate.getMonth() + (i * 6));
+          break;
+        case 'anual':
+          lancamentoDate.setFullYear(startDate.getFullYear() + i);
+          break;
+      }
+      
+      generatedLancamentos.push({
+        id: lancamentos.length + generatedLancamentos.length + 1,
+        ...baseData,
+        vencimento: lancamentoDate,
+        descricao: `${baseData.descricao} (${i + 1}/${repetitions})`,
+        status: "pendente",
+        recorrente: true,
+        recorrenciaOriginal: i === 0 // Marca o primeiro como original
+      });
+    }
+    
+    return generatedLancamentos;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -145,25 +218,53 @@ export default function Lancamentos() {
       return;
     }
 
-    const newLancamento = {
-      id: editingLancamento ? editingLancamento.id : lancamentos.length + 1,
-      ...formData,
-      valor: parseFloat(formData.valor),
-      status: "pendente"
-    };
+    if (formData.recorrente && (!formData.frequencia || !formData.repeticoes)) {
+      toast({
+        title: "Erro",
+        description: "Para lançamentos recorrentes, preencha a frequência e número de repetições",
+        variant: "destructive"
+      });
+      return;
+    }
 
     if (editingLancamento) {
-      setLancamentos(lancamentos.map(l => l.id === editingLancamento.id ? newLancamento : l));
+      const updatedLancamento = {
+        ...editingLancamento,
+        ...formData,
+        valor: parseFloat(formData.valor)
+      };
+      setLancamentos(lancamentos.map(l => l.id === editingLancamento.id ? updatedLancamento : l));
       toast({
         title: "Sucesso",
         description: "Lançamento atualizado com sucesso"
       });
     } else {
-      setLancamentos([...lancamentos, newLancamento]);
-      toast({
-        title: "Sucesso",
-        description: "Lançamento criado com sucesso"
-      });
+      if (formData.recorrente) {
+        // Gerar múltiplos lançamentos para recorrência
+        const newLancamentos = generateRecurringLancamentos({
+          ...formData,
+          valor: parseFloat(formData.valor)
+        });
+        setLancamentos([...lancamentos, ...newLancamentos]);
+        toast({
+          title: "Sucesso",
+          description: `${newLancamentos.length} lançamentos recorrentes criados com sucesso`
+        });
+      } else {
+        // Lançamento único
+        const newLancamento = {
+          id: lancamentos.length + 1,
+          ...formData,
+          valor: parseFloat(formData.valor),
+          status: "pendente",
+          recorrente: false
+        };
+        setLancamentos([...lancamentos, newLancamento]);
+        toast({
+          title: "Sucesso",
+          description: "Lançamento criado com sucesso"
+        });
+      }
     }
 
     // Reset form
@@ -175,7 +276,11 @@ export default function Lancamentos() {
       caso: "",
       vencimento: new Date(),
       recorrente: false,
-      observacoes: ""
+      frequencia: "",
+      repeticoes: "",
+      dataFinal: undefined,
+      observacoes: "",
+      rateios: []
     });
     setEditingLancamento(null);
     setIsDialogOpen(false);
@@ -191,7 +296,11 @@ export default function Lancamentos() {
       caso: lancamento.caso,
       vencimento: lancamento.vencimento,
       recorrente: lancamento.recorrente,
-      observacoes: lancamento.observacoes || ""
+      frequencia: lancamento.frequencia || "",
+      repeticoes: lancamento.repeticoes || "",
+      dataFinal: lancamento.dataFinal,
+      observacoes: lancamento.observacoes || "",
+      rateios: lancamento.rateios || []
     });
     setIsDialogOpen(true);
   };
@@ -210,6 +319,7 @@ export default function Lancamentos() {
       setPaymentLancamento(lancamento);
       setPaymentDate(new Date());
       setPaymentObservations("");
+      setPaymentAccount(lancamento.conta); // Pre-selecionar a conta original
       setIsPaymentDialogOpen(true);
     } else {
       // Marcar como pendente novamente
@@ -241,7 +351,8 @@ export default function Lancamentos() {
             ...l, 
             status: "pago", 
             dataPagamento: paymentDate,
-            observacoesPagamento: paymentObservations 
+            observacoesPagamento: paymentObservations,
+            contaPagamento: paymentAccount 
           }
         : l
     ));
@@ -267,7 +378,7 @@ export default function Lancamentos() {
           
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium shadow-md hover:shadow-lg transition-all duration-200">
+              <Button variant="default" className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Lançamento
               </Button>
@@ -393,7 +504,17 @@ export default function Lancamentos() {
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1">
                             <Label htmlFor="frequencia" className="text-xs">Frequência</Label>
-                            <Select>
+                            <Select 
+                              value={formData.frequencia} 
+                              onValueChange={(value) => {
+                                setFormData({...formData, frequencia: value});
+                                // Auto-calcular data final se já tem repetições
+                                if (formData.repeticoes) {
+                                  const endDate = calculateEndDate(formData.vencimento, value, parseInt(formData.repeticoes));
+                                  setFormData(prev => ({...prev, frequencia: value, dataFinal: endDate}));
+                                }
+                              }}
+                            >
                               <SelectTrigger className="h-8">
                                 <SelectValue placeholder="Selecione" />
                               </SelectTrigger>
@@ -415,12 +536,22 @@ export default function Lancamentos() {
                               placeholder="Ex: 12"
                               className="h-8"
                               min="1"
+                              value={formData.repeticoes}
+                              onChange={(e) => {
+                                const repetitions = e.target.value;
+                                setFormData({...formData, repeticoes: repetitions});
+                                // Auto-calcular data final se já tem frequência
+                                if (formData.frequencia && repetitions) {
+                                  const endDate = calculateEndDate(formData.vencimento, formData.frequencia, parseInt(repetitions));
+                                  setFormData(prev => ({...prev, repeticoes: repetitions, dataFinal: endDate}));
+                                }
+                              }}
                             />
                           </div>
                         </div>
                         
                         <div className="space-y-1">
-                          <Label htmlFor="dataFim" className="text-xs">Data final (opcional)</Label>
+                          <Label htmlFor="dataFim" className="text-xs">Data final (calculada automaticamente)</Label>
                           <Popover>
                             <PopoverTrigger asChild>
                               <Button
@@ -428,12 +559,14 @@ export default function Lancamentos() {
                                 className="w-full justify-start text-left font-normal h-8 text-xs"
                               >
                                 <CalendarIcon className="mr-2 h-3 w-3" />
-                                Selecione a data final
+                                {formData.dataFinal ? format(formData.dataFinal, "PPP", { locale: ptBR }) : "Calculada automaticamente"}
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0">
                               <Calendar
                                 mode="single"
+                                selected={formData.dataFinal}
+                                onSelect={(date) => setFormData({...formData, dataFinal: date})}
                                 initialFocus
                                 className="p-3 pointer-events-auto"
                               />
@@ -466,7 +599,7 @@ export default function Lancamentos() {
                   >
                     Cancelar
                   </Button>
-                  <Button type="submit" className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium">
+                  <Button type="submit" variant="default" className="bg-primary hover:bg-primary/90 text-primary-foreground">
                     {editingLancamento ? "Atualizar" : "Criar"} Lançamento
                   </Button>
                 </div>
@@ -515,6 +648,97 @@ export default function Lancamentos() {
                   <SelectItem value="pago">Pagos/Recebidos</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Sistema de Rateios */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Sistema de Rateios</CardTitle>
+            <CardDescription>Configure rateios padrão para novos lançamentos</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Rateios (opcional)</Label>
+              <div className="border rounded-lg p-3 bg-muted/50">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs text-muted-foreground">Distribua o valor entre diferentes centros de custo</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const newRateio = {
+                        id: Math.random().toString(36).substr(2, 9),
+                        descricao: "",
+                        percentual: 0
+                      };
+                      setFormData({...formData, rateios: [...formData.rateios, newRateio]});
+                    }}
+                    className="h-7 text-xs"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Adicionar Rateio
+                  </Button>
+                </div>
+                
+                {formData.rateios.map((rateio, index) => (
+                  <div key={rateio.id} className="grid grid-cols-12 gap-2 mb-2">
+                    <div className="col-span-6">
+                      <Input
+                        placeholder="Descrição do rateio"
+                        value={rateio.descricao}
+                        onChange={(e) => {
+                          const newRateios = [...formData.rateios];
+                          newRateios[index].descricao = e.target.value;
+                          setFormData({...formData, rateios: newRateios});
+                        }}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="col-span-4">
+                      <Input
+                        type="number"
+                        placeholder="% (0-100)"
+                        value={rateio.percentual || ""}
+                        onChange={(e) => {
+                          const newRateios = [...formData.rateios];
+                          newRateios[index].percentual = parseFloat(e.target.value) || 0;
+                          setFormData({...formData, rateios: newRateios});
+                        }}
+                        className="h-8 text-xs"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const newRateios = formData.rateios.filter(r => r.id !== rateio.id);
+                          setFormData({...formData, rateios: newRateios});
+                        }}
+                        className="h-8 w-full p-0"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                
+                {formData.rateios.length > 0 && (
+                  <div className="text-xs text-muted-foreground mt-2">
+                    Total: {formData.rateios.reduce((sum, r) => sum + (r.percentual || 0), 0).toFixed(2)}%
+                    {formData.rateios.reduce((sum, r) => sum + (r.percentual || 0), 0) !== 100 && (
+                      <span className="text-orange-600 ml-2">⚠️ Total deve ser 100%</span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -653,6 +877,23 @@ export default function Lancamentos() {
                 <p className="text-sm text-muted-foreground">
                   Valor: {paymentLancamento && formatCurrency(paymentLancamento.valor)}
                 </p>
+                <p className="text-sm text-muted-foreground">
+                  Conta original: {paymentLancamento?.conta}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Conta para {paymentLancamento?.tipo === "receita" ? "Recebimento" : "Pagamento"} *</Label>
+                <Select value={paymentAccount} onValueChange={setPaymentAccount}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a conta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mockContas.map((conta) => (
+                      <SelectItem key={conta} value={conta}>{conta}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -699,7 +940,8 @@ export default function Lancamentos() {
                 </Button>
                 <Button 
                   onClick={handlePaymentSubmit}
-                  className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white"
+                  variant="default" 
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
                 >
                   Confirmar {paymentLancamento?.tipo === "receita" ? "Recebimento" : "Pagamento"}
                 </Button>
