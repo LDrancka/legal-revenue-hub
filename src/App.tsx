@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./hooks/useAuth";
+import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
@@ -62,7 +63,9 @@ const App = () => (
               path="/relatorios" 
               element={
                 <ProtectedRoute>
-                  <Reports />
+                  <Layout>
+                    <Reports />
+                  </Layout>
                 </ProtectedRoute>
               } 
             />
