@@ -116,7 +116,7 @@ const Auth = () => {
 
                   <Button 
                     type="submit" 
-                    className="w-full financial-gradient"
+                    className="w-full bg-black hover:bg-black/90 text-white"
                     disabled={isLoading}
                   >
                     {isLoading ? "Entrando..." : "Entrar"}
@@ -186,7 +186,7 @@ const Auth = () => {
 
                   <Button 
                     type="submit" 
-                    className="w-full financial-gradient"
+                    className="w-full bg-black hover:bg-black/90 text-white"
                     disabled={isLoading}
                   >
                     {isLoading ? "Criando conta..." : "Criar Conta"}
