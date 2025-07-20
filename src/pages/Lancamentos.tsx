@@ -122,7 +122,7 @@ export default function Lancamentos() {
     if (!formData.tipo || !formData.descricao || !formData.valor || !formData.conta) {
       toast({
         title: "Erro",
-        description: "Preencha todos os campos obrigatórios",
+        description: "Preencha os campos obrigatórios: Tipo, Descrição, Valor e Conta",
         variant: "destructive"
       });
       return;
@@ -457,18 +457,22 @@ export default function Lancamentos() {
                       {format(lancamento.vencimento, "dd/MM/yyyy")}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleStatus(lancamento.id)}
-                      >
+                      <div className="flex items-center space-x-2">
                         <Badge 
                           variant={lancamento.status === "pendente" ? "secondary" : "default"}
                           className={lancamento.status === "pago" ? "bg-green-100 text-green-800" : ""}
                         >
                           {lancamento.status === "pendente" ? "Pendente" : "Pago/Recebido"}
                         </Badge>
-                      </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleStatus(lancamento.id)}
+                          className="text-xs px-2 py-1"
+                        >
+                          {lancamento.status === "pendente" ? "Marcar como Pago" : "Marcar como Pendente"}
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end space-x-1">

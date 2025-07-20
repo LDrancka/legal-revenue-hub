@@ -104,7 +104,7 @@ export const Sidebar = () => {
               )}
               asChild
             >
-              <a href={item.href}>
+              <a href={item.href} className="flex items-center w-full">
                 <Icon className={cn("h-4 w-4", !collapsed && "mr-2")} />
                 {!collapsed && <span>{item.title}</span>}
               </a>
