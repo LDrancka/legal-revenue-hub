@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "@/components/ui/calendar";
@@ -22,7 +24,10 @@ import {
   Edit,
   Trash2,
   Repeat,
-  Building
+  Building,
+  MoreVertical,
+  DollarSign,
+  AlertTriangle
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -119,7 +124,8 @@ export default function Lancamentos() {
     repeticoes: "",
     dataFinal: undefined as Date | undefined,
     observacoes: "",
-    rateios: [] as Array<{id: string, descricao: string, percentual: number}>
+    temRateio: false,
+    rateios: [] as Array<{id: string, conta: string, valor: number, percentual: number}>
   });
 
   const filteredLancamentos = lancamentos.filter((lancamento) => {
@@ -209,13 +215,35 @@ export default function Lancamentos() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.tipo || !formData.descricao || !formData.valor || !formData.conta) {
+    if (!formData.tipo || !formData.descricao || !formData.valor || (!formData.conta && !formData.temRateio)) {
       toast({
         title: "Erro",
-        description: "Preencha os campos obrigatórios: Tipo, Descrição, Valor e Conta",
+        description: "Preencha os campos obrigatórios: Tipo, Descrição, Valor e Conta (ou configure rateio)",
         variant: "destructive"
       });
       return;
+    }
+
+    // Validar rateios se habilitado
+    if (formData.temRateio) {
+      if (formData.rateios.length === 0) {
+        toast({
+          title: "Erro",
+          description: "Configure pelo menos um rateio",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      const totalPercentual = formData.rateios.reduce((sum, r) => sum + (r.percentual || 0), 0);
+      if (Math.abs(totalPercentual - 100) > 0.01) {
+        toast({
+          title: "Erro",
+          description: "O total dos rateios deve ser 100%",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     if (formData.recorrente && (!formData.frequencia || !formData.repeticoes)) {
@@ -280,6 +308,7 @@ export default function Lancamentos() {
       repeticoes: "",
       dataFinal: undefined,
       observacoes: "",
+      temRateio: false,
       rateios: []
     });
     setEditingLancamento(null);
@@ -300,6 +329,7 @@ export default function Lancamentos() {
       repeticoes: lancamento.repeticoes || "",
       dataFinal: lancamento.dataFinal,
       observacoes: lancamento.observacoes || "",
+      temRateio: lancamento.rateios && lancamento.rateios.length > 0,
       rateios: lancamento.rateios || []
     });
     setIsDialogOpen(true);
@@ -578,15 +608,146 @@ export default function Lancamentos() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="observacoes">Observações</Label>
-                  <Textarea
-                    id="observacoes"
-                    placeholder="Observações adicionais..."
-                    value={formData.observacoes}
-                    onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
-                  />
-                </div>
+                 {/* Sistema de Rateio */}
+                 <div className="space-y-2">
+                   <div className="flex items-center space-x-2">
+                     <Checkbox
+                       id="temRateio"
+                       checked={formData.temRateio}
+                       onCheckedChange={(checked) => setFormData({...formData, temRateio: checked as boolean, rateios: checked ? formData.rateios : []})}
+                     />
+                     <Label htmlFor="temRateio" className="text-sm">Usar rateio para este lançamento</Label>
+                   </div>
+                   
+                   {formData.temRateio && (
+                     <div className="border rounded-lg p-3 bg-muted/50 space-y-3">
+                       <div className="flex justify-between items-center">
+                         <span className="text-sm font-medium">Rateios por conta</span>
+                         <Button
+                           type="button"
+                           variant="outline"
+                           size="sm"
+                           onClick={() => {
+                             const valorTotal = parseFloat(formData.valor) || 0;
+                             const newRateio = {
+                               id: Math.random().toString(36).substr(2, 9),
+                               conta: "",
+                               valor: 0,
+                               percentual: 0
+                             };
+                             setFormData({...formData, rateios: [...formData.rateios, newRateio]});
+                           }}
+                           className="h-7 text-xs"
+                         >
+                           <Plus className="h-3 w-3 mr-1" />
+                           Adicionar Rateio
+                         </Button>
+                       </div>
+                       
+                       {formData.rateios.map((rateio, index) => (
+                         <div key={rateio.id} className="grid grid-cols-12 gap-2">
+                           <div className="col-span-5">
+                             <Select 
+                               value={rateio.conta} 
+                               onValueChange={(value) => {
+                                 const newRateios = [...formData.rateios];
+                                 newRateios[index].conta = value;
+                                 setFormData({...formData, rateios: newRateios});
+                               }}
+                             >
+                               <SelectTrigger className="h-8 text-xs">
+                                 <SelectValue placeholder="Selecione a conta" />
+                               </SelectTrigger>
+                               <SelectContent>
+                                 {mockContas.map((conta) => (
+                                   <SelectItem key={conta} value={conta}>{conta}</SelectItem>
+                                 ))}
+                               </SelectContent>
+                             </Select>
+                           </div>
+                           <div className="col-span-3">
+                             <Input
+                               type="number"
+                               placeholder="% (0-100)"
+                               value={rateio.percentual || ""}
+                               onChange={(e) => {
+                                 const percentual = parseFloat(e.target.value) || 0;
+                                 const valorTotal = parseFloat(formData.valor) || 0;
+                                 const valor = (valorTotal * percentual) / 100;
+                                 
+                                 const newRateios = [...formData.rateios];
+                                 newRateios[index] = { ...newRateios[index], percentual, valor };
+                                 setFormData({...formData, rateios: newRateios});
+                               }}
+                               className="h-8 text-xs"
+                               min="0"
+                               max="100"
+                               step="0.01"
+                             />
+                           </div>
+                           <div className="col-span-3">
+                             <Input
+                               type="number"
+                               placeholder="Valor"
+                               value={rateio.valor || ""}
+                               onChange={(e) => {
+                                 const valor = parseFloat(e.target.value) || 0;
+                                 const valorTotal = parseFloat(formData.valor) || 0;
+                                 const percentual = valorTotal > 0 ? (valor / valorTotal) * 100 : 0;
+                                 
+                                 const newRateios = [...formData.rateios];
+                                 newRateios[index] = { ...newRateios[index], valor, percentual };
+                                 setFormData({...formData, rateios: newRateios});
+                               }}
+                               className="h-8 text-xs"
+                               min="0"
+                               step="0.01"
+                             />
+                           </div>
+                           <div className="col-span-1">
+                             <Button
+                               type="button"
+                               variant="outline"
+                               size="sm"
+                               onClick={() => {
+                                 const newRateios = formData.rateios.filter(r => r.id !== rateio.id);
+                                 setFormData({...formData, rateios: newRateios});
+                               }}
+                               className="h-8 w-full p-0"
+                             >
+                               <Trash2 className="h-3 w-3" />
+                             </Button>
+                           </div>
+                         </div>
+                       ))}
+                       
+                       {formData.rateios.length > 0 && (
+                         <div className="text-xs space-y-1">
+                           <div className="flex justify-between">
+                             <span>Total %: {formData.rateios.reduce((sum, r) => sum + (r.percentual || 0), 0).toFixed(2)}%</span>
+                             <span>Total R$: {formatCurrency(formData.rateios.reduce((sum, r) => sum + (r.valor || 0), 0))}</span>
+                           </div>
+                           {Math.abs(formData.rateios.reduce((sum, r) => sum + (r.percentual || 0), 0) - 100) > 0.01 && (
+                             <div className="text-orange-600 flex items-center">
+                               <AlertTriangle className="h-3 w-3 mr-1" />
+                               Total deve ser 100%
+                             </div>
+                           )}
+                         </div>
+                       )}
+                     </div>
+                   )}
+                 </div>
+
+                 <div className="space-y-2">
+                   <Label htmlFor="observacoes">Observações</Label>
+                   <Textarea
+                     id="observacoes"
+                     placeholder="Observações adicionais..."
+                     value={formData.observacoes}
+                     onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
+                   />
+                 </div>
 
                 <div className="flex justify-end space-x-2">
                   <Button
@@ -652,96 +813,6 @@ export default function Lancamentos() {
           </CardContent>
         </Card>
 
-        {/* Sistema de Rateios */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Sistema de Rateios</CardTitle>
-            <CardDescription>Configure rateios padrão para novos lançamentos</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Rateios (opcional)</Label>
-              <div className="border rounded-lg p-3 bg-muted/50">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs text-muted-foreground">Distribua o valor entre diferentes centros de custo</span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const newRateio = {
-                        id: Math.random().toString(36).substr(2, 9),
-                        descricao: "",
-                        percentual: 0
-                      };
-                      setFormData({...formData, rateios: [...formData.rateios, newRateio]});
-                    }}
-                    className="h-7 text-xs"
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Adicionar Rateio
-                  </Button>
-                </div>
-                
-                {formData.rateios.map((rateio, index) => (
-                  <div key={rateio.id} className="grid grid-cols-12 gap-2 mb-2">
-                    <div className="col-span-6">
-                      <Input
-                        placeholder="Descrição do rateio"
-                        value={rateio.descricao}
-                        onChange={(e) => {
-                          const newRateios = [...formData.rateios];
-                          newRateios[index].descricao = e.target.value;
-                          setFormData({...formData, rateios: newRateios});
-                        }}
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                    <div className="col-span-4">
-                      <Input
-                        type="number"
-                        placeholder="% (0-100)"
-                        value={rateio.percentual || ""}
-                        onChange={(e) => {
-                          const newRateios = [...formData.rateios];
-                          newRateios[index].percentual = parseFloat(e.target.value) || 0;
-                          setFormData({...formData, rateios: newRateios});
-                        }}
-                        className="h-8 text-xs"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const newRateios = formData.rateios.filter(r => r.id !== rateio.id);
-                          setFormData({...formData, rateios: newRateios});
-                        }}
-                        className="h-8 w-full p-0"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                
-                {formData.rateios.length > 0 && (
-                  <div className="text-xs text-muted-foreground mt-2">
-                    Total: {formData.rateios.reduce((sum, r) => sum + (r.percentual || 0), 0).toFixed(2)}%
-                    {formData.rateios.reduce((sum, r) => sum + (r.percentual || 0), 0) !== 100 && (
-                      <span className="text-orange-600 ml-2">⚠️ Total deve ser 100%</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Lista de Lançamentos */}
         <Card>
@@ -798,54 +869,71 @@ export default function Lancamentos() {
                     <TableCell>
                       {format(lancamento.vencimento, "dd/MM/yyyy")}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Badge 
-                          variant={lancamento.status === "pendente" ? "secondary" : "default"}
-                          className={lancamento.status === "pago" ? "bg-green-100 text-green-800" : ""}
-                        >
-                          {lancamento.status === "pendente" ? "Pendente" : "Pago/Recebido"}
-                        </Badge>
-                        {lancamento.status === "pendente" ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => toggleStatus(lancamento)}
-                            className="text-xs px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                          >
-                            {lancamento.tipo === "receita" ? "Registrar Recebimento" : "Registrar Pagamento"}
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => toggleStatus(lancamento)}
-                            className="text-xs px-2 py-1"
-                          >
-                            Marcar como Pendente
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEdit(lancamento)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(lancamento.id)}
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                     <TableCell>
+                       <Badge 
+                         variant={lancamento.status === "pendente" ? "secondary" : "default"}
+                         className={lancamento.status === "pago" ? "bg-green-100 text-green-800" : ""}
+                       >
+                         {lancamento.status === "pendente" ? "Pendente" : "Pago/Recebido"}
+                       </Badge>
+                     </TableCell>
+                     <TableCell className="text-right">
+                       <div className="flex justify-end space-x-1">
+                         <Button
+                           variant="ghost"
+                           size="sm"
+                           onClick={() => handleEdit(lancamento)}
+                         >
+                           <Edit className="h-4 w-4" />
+                         </Button>
+                         
+                         <DropdownMenu>
+                           <DropdownMenuTrigger asChild>
+                             <Button variant="ghost" size="sm">
+                               <MoreVertical className="h-4 w-4" />
+                             </Button>
+                           </DropdownMenuTrigger>
+                           <DropdownMenuContent align="end">
+                             {lancamento.status === "pendente" ? (
+                               <DropdownMenuItem onClick={() => toggleStatus(lancamento)}>
+                                 <DollarSign className="h-4 w-4 mr-2" />
+                                 {lancamento.tipo === "receita" ? "Registrar Recebimento" : "Registrar Pagamento"}
+                               </DropdownMenuItem>
+                             ) : (
+                               <AlertDialog>
+                                 <AlertDialogTrigger asChild>
+                                   <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                     <AlertTriangle className="h-4 w-4 mr-2" />
+                                     Marcar como Pendente
+                                   </DropdownMenuItem>
+                                 </AlertDialogTrigger>
+                                 <AlertDialogContent>
+                                   <AlertDialogHeader>
+                                     <AlertDialogTitle>Confirmar reversão</AlertDialogTitle>
+                                     <AlertDialogDescription>
+                                       Tem certeza que deseja reverter este lançamento para pendente? Esta ação irá remover o registro de pagamento/recebimento.
+                                     </AlertDialogDescription>
+                                   </AlertDialogHeader>
+                                   <AlertDialogFooter>
+                                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                     <AlertDialogAction onClick={() => toggleStatus(lancamento)}>
+                                       Sim, reverter
+                                     </AlertDialogAction>
+                                   </AlertDialogFooter>
+                                 </AlertDialogContent>
+                               </AlertDialog>
+                             )}
+                             <DropdownMenuItem 
+                               onClick={() => handleDelete(lancamento.id)}
+                               className="text-red-500 hover:text-red-700"
+                             >
+                               <Trash2 className="h-4 w-4 mr-2" />
+                               Excluir
+                             </DropdownMenuItem>
+                           </DropdownMenuContent>
+                         </DropdownMenu>
+                       </div>
+                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
