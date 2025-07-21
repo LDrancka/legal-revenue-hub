@@ -1288,6 +1288,19 @@ export default function Lancamentos() {
 
       // Calcular saldo baseado nas transações pagas
       for (const transaction of paidTransactions || []) {
+        // Verificar se a transação tem splits - se tiver, não contabilizar pela conta principal
+        const { data: transactionSplits } = await supabase
+          .from('transaction_splits')
+          .select('id')
+          .eq('transaction_id', transaction.id)
+          .limit(1);
+
+        // Se tem splits, pular (será contabilizado pelos splits individualmente)
+        if (transactionSplits && transactionSplits.length > 0) {
+          continue;
+        }
+
+        // Se não tem splits, contabilizar normalmente
         const accountId = transaction.payment_account_id || transaction.account_id;
         if (!accountId) continue;
 
@@ -1299,7 +1312,7 @@ export default function Lancamentos() {
         accountBalances.set(accountId, currentBalance + transactionAmount);
       }
 
-      // Buscar splits (rateios) e aplicar também
+      // Buscar splits (rateios) e aplicar - ESTAS são as únicas que contam para transações com rateio
       const { data: splits, error: splitsError } = await supabase
         .from('transaction_splits')
         .select(`
