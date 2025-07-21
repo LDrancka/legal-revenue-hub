@@ -79,6 +79,7 @@ interface Client {
   name: string;
   email?: string;
   phone?: string;
+  document?: string;
 }
 
 interface Category {
@@ -102,6 +103,9 @@ export default function Lancamentos() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedTipo, setSelectedTipo] = useState<string>("todos");
   const [selectedStatus, setSelectedStatus] = useState<string>("todos");
+  const [clientSearch, setClientSearch] = useState("");
+  const [accountSearch, setAccountSearch] = useState("");
+  const [rateioAccountSearch, setRateioAccountSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -255,11 +259,14 @@ export default function Lancamentos() {
     return matchesSearch && matchesTipo && matchesStatus;
   });
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
+  const formatCurrency = (value: number, isExpense: boolean = false) => {
+    const amount = isExpense ? Math.abs(value) : value;
+    const formatted = new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL'
-    }).format(value);
+    }).format(amount);
+    
+    return isExpense ? `-${formatted}` : formatted;
   };
 
   const getAccountName = (accountId?: string) => {
@@ -309,11 +316,12 @@ export default function Lancamentos() {
     // Debug para verificar os dados
     console.log('Dados do formulário:', formData);
 
-    if (!formData.type || !formData.description || !formData.amount || (!formData.account_id && !formData.temRateio)) {
+    if (!formData.type || !formData.description || !formData.amount || !formData.client_id || (!formData.account_id && !formData.temRateio)) {
       const missingFields = [];
       if (!formData.type) missingFields.push('Tipo');
       if (!formData.description) missingFields.push('Descrição');
       if (!formData.amount) missingFields.push('Valor');
+      if (!formData.client_id) missingFields.push('Contato');
       if (!formData.account_id && !formData.temRateio) missingFields.push('Conta ou Rateio');
       
       toast({
@@ -901,30 +909,38 @@ export default function Lancamentos() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="amount">Valor *</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="amount">Valor *</Label>
+                  <div className="relative">
                     <Input
                       id="amount"
                       type="number"
                       step="0.01"
-                      placeholder="0,00"
+                      placeholder={formData.type === 'despesa' ? '-0,00' : '0,00'}
                       value={formData.amount}
                       onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                      className={formData.type === 'despesa' ? 'text-red-500 font-semibold' : ''}
                     />
+                    {formData.type === 'despesa' && (
+                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                        <span className="text-red-500 font-semibold text-lg">-</span>
+                      </div>
+                    )}
                   </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="type">Tipo *</Label>
-                    <Select value={formData.type} onValueChange={(value: "receita" | "despesa") => setFormData({...formData, type: value})}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Receita" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="receita">Receita</SelectItem>
-                        <SelectItem value="despesa">Despesa</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="type">Tipo *</Label>
+                  <Select value={formData.type} onValueChange={(value: "receita" | "despesa") => setFormData({...formData, type: value})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="receita">Receita</SelectItem>
+                      <SelectItem value="despesa">Despesa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
@@ -966,14 +982,39 @@ export default function Lancamentos() {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="client">Contato</Label>
+                    <Label htmlFor="client">Contato *</Label>
                     <Select value={formData.client_id} onValueChange={(value) => setFormData({...formData, client_id: value})}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione um contato" />
                       </SelectTrigger>
                       <SelectContent>
-                        {clients.map((client) => (
-                          <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                        <div className="p-2">
+                          <Input 
+                            placeholder="Buscar por nome, email ou documento..."
+                            className="h-8"
+                            value={clientSearch}
+                            onChange={(e) => setClientSearch(e.target.value)}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        {clients
+                          .filter((client) => {
+                            if (!clientSearch || clientSearch.length < 3) return true;
+                            const search = clientSearch.toLowerCase();
+                            return (
+                              client.name.toLowerCase().includes(search) ||
+                              (client.email?.toLowerCase().includes(search)) ||
+                              (client.document?.toLowerCase().includes(search)) ||
+                              client.id.toLowerCase().includes(search)
+                            );
+                          })
+                          .map((client) => (
+                          <SelectItem key={client.id} value={client.id}>
+                            <div className="flex flex-col">
+                              <span>{client.name}</span>
+                              {client.email && <span className="text-xs text-muted-foreground">{client.email}</span>}
+                            </div>
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -992,9 +1033,33 @@ export default function Lancamentos() {
                         <SelectValue placeholder="Selecione uma conta" />
                       </SelectTrigger>
                       <SelectContent>
-                        {accounts.map((account) => (
-                          <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
-                        ))}
+                        <div className="p-2">
+                          <Input 
+                            placeholder="Buscar conta..."
+                            className="h-8"
+                            value={accountSearch}
+                            onChange={(e) => setAccountSearch(e.target.value)}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        {accounts
+                          .filter((account) => {
+                            if (!accountSearch || accountSearch.length < 3) return true;
+                            const search = accountSearch.toLowerCase();
+                            return (
+                              account.name.toLowerCase().includes(search) ||
+                              account.type.toLowerCase().includes(search) ||
+                              account.id.toLowerCase().includes(search)
+                            );
+                          })
+                          .map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              <div className="flex flex-col">
+                                <span>{account.name}</span>
+                                <span className="text-xs text-muted-foreground">{account.type}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1108,11 +1173,32 @@ export default function Lancamentos() {
                                 <SelectValue placeholder="Selecione" />
                               </SelectTrigger>
                               <SelectContent>
-                                {accounts.map((account) => (
-                                  <SelectItem key={account.id} value={account.id}>
-                                    {account.name}
-                                  </SelectItem>
-                                ))}
+                                <div className="p-2">
+                                  <Input 
+                                    placeholder="Buscar conta..."
+                                    className="h-6 text-xs"
+                                    value={rateioAccountSearch}
+                                    onChange={(e) => setRateioAccountSearch(e.target.value)}
+                                    onKeyDown={(e) => e.stopPropagation()}
+                                  />
+                                </div>
+                                {accounts
+                                  .filter((account) => {
+                                    if (!rateioAccountSearch || rateioAccountSearch.length < 3) return true;
+                                    const search = rateioAccountSearch.toLowerCase();
+                                    return (
+                                      account.name.toLowerCase().includes(search) ||
+                                      account.type.toLowerCase().includes(search)
+                                    );
+                                  })
+                                  .map((account) => (
+                                    <SelectItem key={account.id} value={account.id}>
+                                      <div className="flex flex-col">
+                                        <span className="text-xs">{account.name}</span>
+                                        <span className="text-xs text-muted-foreground">{account.type}</span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
                               </SelectContent>
                             </Select>
                           </div>
@@ -1138,8 +1224,8 @@ export default function Lancamentos() {
                           </div>
                           
                           <div className="flex items-center gap-1">
-                            <div className="text-xs text-muted-foreground">
-                              {formatCurrency(rateio.amount)}
+                            <div className={`text-xs ${formData.type === 'despesa' ? 'text-red-500 font-semibold' : 'text-muted-foreground'}`}>
+                              {formatCurrency(rateio.amount, formData.type === 'despesa')}
                             </div>
                             {formData.rateios.length > 1 && (
                               <Button
