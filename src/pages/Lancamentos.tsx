@@ -864,7 +864,11 @@ export default function Lancamentos() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="account">Conta *</Label>
-                    <Select value={formData.account_id} onValueChange={(value) => setFormData({...formData, account_id: value})}>
+                    <Select 
+                      value={formData.account_id} 
+                      onValueChange={(value) => setFormData({...formData, account_id: value})}
+                      disabled={formData.temRateio}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione a conta" />
                       </SelectTrigger>
@@ -889,6 +893,128 @@ export default function Lancamentos() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                {/* Opção de Rateio */}
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="rateio"
+                      checked={formData.temRateio}
+                      onCheckedChange={(checked) => {
+                        setFormData({
+                          ...formData, 
+                          temRateio: checked as boolean,
+                          account_id: checked ? "" : formData.account_id,
+                          rateios: checked ? [
+                            { id: Date.now().toString(), account_id: "", amount: 0, percentage: 100 }
+                          ] : []
+                        });
+                      }}
+                    />
+                    <Label htmlFor="rateio" className="text-sm">Dividir entre contas (Rateio)</Label>
+                  </div>
+                  
+                  {formData.temRateio && (
+                    <div className="mt-4 p-4 border rounded-lg bg-muted/50 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <h4 className="font-medium text-sm">Configurar Rateio</h4>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              rateios: [
+                                ...formData.rateios,
+                                { id: Date.now().toString(), account_id: "", amount: 0, percentage: 0 }
+                              ]
+                            });
+                          }}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Adicionar Conta
+                        </Button>
+                      </div>
+                      
+                      {formData.rateios.map((rateio, index) => (
+                        <div key={rateio.id} className="grid grid-cols-3 gap-2 items-end">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Conta</Label>
+                            <Select 
+                              value={rateio.account_id} 
+                              onValueChange={(value) => {
+                                const newRateios = [...formData.rateios];
+                                newRateios[index].account_id = value;
+                                setFormData({...formData, rateios: newRateios});
+                              }}
+                            >
+                              <SelectTrigger className="h-8">
+                                <SelectValue placeholder="Selecione" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {accounts.map((account) => (
+                                  <SelectItem key={account.id} value={account.id}>
+                                    {account.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <Label className="text-xs">Percentual (%)</Label>
+                            <Input
+                              type="number"
+                              className="h-8"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              placeholder="0"
+                              value={rateio.percentage || ""}
+                              onChange={(e) => {
+                                const percentage = parseFloat(e.target.value) || 0;
+                                const amount = formData.amount ? (parseFloat(formData.amount) * percentage / 100) : 0;
+                                const newRateios = [...formData.rateios];
+                                newRateios[index] = { ...rateio, percentage, amount };
+                                setFormData({...formData, rateios: newRateios});
+                              }}
+                            />
+                          </div>
+                          
+                          <div className="flex items-center gap-1">
+                            <div className="text-xs text-muted-foreground">
+                              {formatCurrency(rateio.amount)}
+                            </div>
+                            {formData.rateios.length > 1 && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  const newRateios = formData.rateios.filter((_, i) => i !== index);
+                                  setFormData({...formData, rateios: newRateios});
+                                }}
+                                className="h-6 w-6 p-0"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      
+                      <div className="text-xs text-muted-foreground">
+                        Total: {formData.rateios.reduce((sum, r) => sum + (r.percentage || 0), 0).toFixed(2)}%
+                        {Math.abs(formData.rateios.reduce((sum, r) => sum + (r.percentage || 0), 0) - 100) > 0.01 && (
+                          <span className="text-red-500 ml-2">
+                            ⚠️ O total deve ser 100%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
