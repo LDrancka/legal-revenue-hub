@@ -6,6 +6,7 @@ import { Layout } from "@/components/Layout";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -66,6 +67,7 @@ interface DashboardData {
 const Dashboard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     today: { toReceive: 0, toPay: 0 },
     thisMonth: { received: 0, paid: 0, provisioned: 0 },
@@ -212,16 +214,25 @@ const Dashboard = () => {
         });
       }
 
-      // 2. Distribuição por status
-      const statusCounts = { pendente: 0, quitado: 0, vencido: 0 };
+      // 2. Distribuição por status (incluindo inadimplentes)
+      const statusCounts = { pendente: 0, quitado: 0, inadimplente: 0 };
       transactions?.forEach(transaction => {
-        statusCounts[transaction.status as keyof typeof statusCounts]++;
+        const dueDate = new Date(transaction.due_date);
+        const isPaid = transaction.status === 'quitado';
+        
+        if (isPaid) {
+          statusCounts.quitado++;
+        } else if (dueDate < today) {
+          statusCounts.inadimplente++;
+        } else {
+          statusCounts.pendente++;
+        }
       });
 
       const statusDistribution = [
         { name: 'Pendente', value: statusCounts.pendente, color: '#f59e0b' },
         { name: 'Quitado', value: statusCounts.quitado, color: '#0ea5e9' },
-        { name: 'Vencido', value: statusCounts.vencido, color: '#ef4444' }
+        { name: 'Inadimplente', value: statusCounts.inadimplente, color: '#ef4444' }
       ].filter(item => item.value > 0);
 
       // 3. Saldo das contas
@@ -247,6 +258,26 @@ const Dashboard = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleViewOverdue = () => {
+    navigate('/lancamentos?status=inadimplente');
+  };
+
+  const handleNewTransaction = () => {
+    navigate('/lancamentos');
+  };
+
+  const handleReports = () => {
+    navigate('/reports');
+  };
+
+  const handleNewAccount = () => {
+    navigate('/accounts');
+  };
+
+  const handleTransfer = () => {
+    navigate('/transferencias');
   };
 
   useEffect(() => {
@@ -276,11 +307,11 @@ const Dashboard = () => {
           </div>
           
           <div className="flex items-center space-x-3">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleReports}>
               <Eye className="h-4 w-4 mr-2" />
               Relatórios
             </Button>
-            <Button size="sm" className="financial-gradient">
+            <Button size="sm" className="financial-gradient" onClick={handleNewTransaction}>
               <Plus className="h-4 w-4 mr-2" />
               Novo Lançamento
             </Button>
@@ -396,7 +427,12 @@ const Dashboard = () => {
                 <div className="text-3xl font-bold text-red-700 dark:text-red-400">
                   {formatCurrency(dashboardData.overdue.amount)}
                 </div>
-                <Button variant="outline" size="sm" className="border-red-300 text-red-700 hover:bg-red-50">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-red-300 text-red-700 hover:bg-red-50"
+                  onClick={handleViewOverdue}
+                >
                   Ver Detalhes
                 </Button>
               </div>
@@ -520,22 +556,22 @@ const Dashboard = () => {
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Button variant="outline" className="h-20 flex-col space-y-2">
+          <Button variant="outline" className="h-20 flex-col space-y-2" onClick={handleNewAccount}>
             <Plus className="h-5 w-5" />
             <span className="text-sm">Nova Conta</span>
           </Button>
           
-          <Button variant="outline" className="h-20 flex-col space-y-2">
+          <Button variant="outline" className="h-20 flex-col space-y-2" onClick={handleNewTransaction}>
             <Calendar className="h-5 w-5" />
-            <span className="text-sm">Fluxo de Caixa</span>
+            <span className="text-sm">Novo Lançamento</span>
           </Button>
           
-          <Button variant="outline" className="h-20 flex-col space-y-2">
+          <Button variant="outline" className="h-20 flex-col space-y-2" onClick={handleTransfer}>
             <DollarSign className="h-5 w-5" />
             <span className="text-sm">Transferência</span>
           </Button>
           
-          <Button variant="outline" className="h-20 flex-col space-y-2">
+          <Button variant="outline" className="h-20 flex-col space-y-2" onClick={handleReports}>
             <Eye className="h-5 w-5" />
             <span className="text-sm">Relatórios</span>
           </Button>

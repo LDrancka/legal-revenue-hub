@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -94,6 +95,7 @@ interface Category {
 export default function Lancamentos() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -175,6 +177,14 @@ export default function Lancamentos() {
       fetchData();
     }
   }, [user]);
+
+  // Apply URL filters
+  useEffect(() => {
+    const statusParam = searchParams.get('status');
+    if (statusParam && ['pendente', 'quitado', 'inadimplente'].includes(statusParam)) {
+      setSelectedStatus(statusParam);
+    }
+  }, [searchParams]);
 
   const fetchData = async () => {
     try {
@@ -285,7 +295,20 @@ export default function Lancamentos() {
   const filteredTransactions = transactions.filter((transaction) => {
     const matchesSearch = transaction.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesTipo = selectedTipo === "todos" || transaction.type === selectedTipo;
-    const matchesStatus = selectedStatus === "todos" || transaction.status === selectedStatus;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueDate = new Date(transaction.due_date);
+    const isOverdue = dueDate < today && transaction.status !== 'quitado';
+    
+    let matchesStatus = false;
+    if (selectedStatus === "todos") {
+      matchesStatus = true;
+    } else if (selectedStatus === "inadimplente") {
+      matchesStatus = isOverdue;
+    } else {
+      matchesStatus = transaction.status === selectedStatus;
+    }
     
     return matchesSearch && matchesTipo && matchesStatus;
   });
@@ -2157,6 +2180,7 @@ export default function Lancamentos() {
                   <SelectItem value="todos">Todos status</SelectItem>
                   <SelectItem value="pendente">Pendentes</SelectItem>
                   <SelectItem value="quitado">Quitados</SelectItem>
+                  <SelectItem value="inadimplente">Inadimplentes</SelectItem>
                 </SelectContent>
               </Select>
             </div>
