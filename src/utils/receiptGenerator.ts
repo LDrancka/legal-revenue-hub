@@ -145,7 +145,28 @@ export function generateReceipt(data: ReceiptData): void {
     if (data.clientCpf) {
       textoRecebi += `, CPF ${data.clientCpf}`;
     }
-    textoRecebi += `, a importância de ${valorExtenso}, referente à ${data.description}.`;
+    textoRecebi += `, a importância de ${valorExtenso}, referente à ${data.description}. Para maior clareza, firmo(amos) o presente recibo que comprova o recebimento integral do valor mencionado, concedendo quitação plena, geral e irrevogável pela quantia recebida`;
+    
+    // Adicionar informações de pagamento se existirem
+    if (data.paymentMethod && data.paymentMethod !== 'Dinheiro') {
+      textoRecebi += `, via ${data.paymentMethod}`;
+      
+      if (data.accountData && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
+        textoRecebi += ` (${data.accountData}`;
+        
+        if (data.pixKey && data.paymentMethod === 'PIX') {
+          textoRecebi += ` - Chave PIX: ${data.pixKey}`;
+        }
+        
+        if (data.beneficiaryName && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
+          textoRecebi += ` - ${data.beneficiaryName}`;
+        }
+        
+        textoRecebi += ')';
+      }
+    }
+    
+    textoRecebi += '.';
     
     // Quebrar o texto para caber na largura disponível
     const recebiWidth = pageWidth - 2 * margin;
@@ -207,61 +228,11 @@ export function generateReceipt(data: ReceiptData): void {
       currentY += 6;
     });
     
-    currentY += 10; // Espaço entre os dois parágrafos
+    currentY += 12; // Espaço reduzido após texto completo
     
-    // SEGUNDO: Texto de quitação
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    
-    let quitacaoTexto = "Para maior clareza, firmo(amos) o presente recibo que comprova o recebimento integral do valor mencionado, concedendo quitação plena, geral e irrevogável pela quantia recebida";
-    
-    // Adicionar informações de pagamento se existirem
-    if (data.paymentMethod && data.paymentMethod !== 'Dinheiro') {
-      quitacaoTexto += `, via ${data.paymentMethod}`;
-      
-      if (data.accountData && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
-        quitacaoTexto += ` (${data.accountData}`;
-        
-        if (data.pixKey && data.paymentMethod === 'PIX') {
-          quitacaoTexto += ` - Chave PIX: ${data.pixKey}`;
-        }
-        
-        if (data.beneficiaryName && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
-          quitacaoTexto += ` - ${data.beneficiaryName}`;
-        }
-        
-        quitacaoTexto += ')';
-      }
-    }
-    
-    quitacaoTexto += '.';
-    
-    // Quebrar o texto de quitação
-    const quitacaoWidth = pageWidth - 2 * margin;
-    const quitacaoLines = doc.splitTextToSize(quitacaoTexto, quitacaoWidth);
-    
-    // Verificar se há espaço suficiente
-    const spaceNeeded = quitacaoLines.length * 5 + 50; // linhas + espaço para assinatura
-    if (currentY + spaceNeeded > maxYLimit) {
-      doc.setFontSize(8);
-      const compactLines = doc.splitTextToSize(quitacaoTexto, quitacaoWidth);
-      compactLines.forEach((line: string) => {
-        doc.text(line, margin, currentY);
-        currentY += 4;
-      });
-    } else {
-      quitacaoLines.forEach((line: string) => {
-        doc.text(line, margin, currentY);
-        currentY += 5;
-      });
-    }
-    
-    doc.setFontSize(10);
-    currentY += 20; // Espaço após texto de quitação
-    
-    // Verificar se há espaço suficiente para cidade/data + assinatura (total ~35px)
-    if (currentY + 35 > maxYLimit) {
-      currentY = maxYLimit - 35;
+    // Verificar se há espaço suficiente para cidade/data + assinatura (total ~25px)
+    if (currentY + 25 > maxYLimit) {
+      currentY = maxYLimit - 25;
     }
     
     // Cidade e data alinhados à direita
@@ -295,7 +266,7 @@ export function generateReceipt(data: ReceiptData): void {
       if (data.officeOwnerDocument) {
         const documentLabel = data.officeDocumentType === 'cpf' ? 'CPF' : 'CNPJ';
         doc.text(`${documentLabel}: ${data.officeOwnerDocument}`, pageWidth / 2, currentY, { align: 'center' });
-        currentY += 8;
+        currentY += 5; // Espaço reduzido
       }
       
       // Linha 3: "Por:" e nome do usuário
