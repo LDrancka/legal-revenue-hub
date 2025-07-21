@@ -47,6 +47,8 @@ interface Transaction {
   amount: number;
   account_id?: string;
   case_id?: string;
+  client_id?: string;
+  category_id?: string;
   due_date: string;
   status: "pendente" | "pago";
   payment_date?: string;
@@ -59,6 +61,7 @@ interface Transaction {
   recurrence_end_date?: string;
   recurrence_original_id?: string;
   user_id: string;
+  splits?: Array<{ account_id: string; amount: number; percentage: number }>;
 }
 
 interface Account {
@@ -196,7 +199,14 @@ export default function Lancamentos() {
   const fetchTransactions = async () => {
     const { data, error } = await supabase
       .from('transactions')
-      .select('*')
+      .select(`
+        *,
+        transaction_splits (
+          account_id,
+          amount,
+          percentage
+        )
+      `)
       .eq('user_id', user?.id)
       .order('due_date', { ascending: false });
 
@@ -205,7 +215,13 @@ export default function Lancamentos() {
       return;
     }
 
-    setTransactions(data || []);
+    // Processar os dados para incluir splits na transaction
+    const processedTransactions = (data || []).map(transaction => ({
+      ...transaction,
+      splits: transaction.transaction_splits || []
+    }));
+
+    setTransactions(processedTransactions);
   };
 
   const fetchAccounts = async () => {
@@ -299,7 +315,17 @@ export default function Lancamentos() {
     return { text: "Pendente", variant: "outline" as const, className: "text-yellow-700 bg-yellow-100" };
   };
 
-  const getAccountName = (accountId?: string) => {
+  const getAccountName = (accountId?: string, splits?: Array<{ account_id: string; amount: number; percentage: number }>) => {
+    // Se tem splits (rateio), mostrar todas as contas
+    if (splits && splits.length > 0) {
+      const accountNames = splits.map(split => {
+        const account = accounts.find(acc => acc.id === split.account_id);
+        return `${account?.name || 'Conta não encontrada'} (${split.percentage}%)`;
+      });
+      return accountNames.join(', ');
+    }
+    
+    // Se não tem splits, usar a conta padrão
     if (!accountId) return "Não informada";
     const account = accounts.find(acc => acc.id === accountId);
     return account?.name || "Conta não encontrada";
@@ -309,6 +335,12 @@ export default function Lancamentos() {
     if (!caseId) return "Não informado";
     const case_ = cases.find(c => c.id === caseId);
     return case_?.name || "Caso não encontrado";
+  };
+
+  const getClientName = (clientId?: string) => {
+    if (!clientId) return "Não informado";
+    const client = clients.find(c => c.id === clientId);
+    return client?.name || "Cliente não encontrado";
   };
 
   // Função para calcular data final baseada na frequência e repetições
@@ -400,6 +432,8 @@ export default function Lancamentos() {
         amount: parseFloat(formData.amount),
         account_id: formData.temRateio ? null : formData.account_id || null,
         case_id: formData.case_id || null,
+        client_id: formData.client_id || null,
+        category_id: formData.category_id || null,
         due_date: formData.due_date.toISOString().split('T')[0],
         status: formData.status as "pendente" | "pago",
         observations: formData.observations || null,
@@ -557,8 +591,64 @@ export default function Lancamentos() {
 
         // Se tem rateio, criar os splits
         if (formData.temRateio && formData.rateios.length > 0) {
-          // Implementar lógica de rateio aqui se necessário
-          // Por enquanto vou deixar comentado pois precisa da tabela transaction_splits
+          // Buscar o ID da transação criada
+          const { data: transactionData, error: fetchError } = await supabase
+            .from('transactions')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('description', formData.description)
+            .eq('amount', parseFloat(formData.amount))
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (!fetchError && transactionData) {
+            // Criar os splits
+            const splitsToInsert = formData.rateios.map(rateio => ({
+              transaction_id: transactionData.id,
+              account_id: rateio.account_id,
+              amount: rateio.amount,
+              percentage: rateio.percentage
+            }));
+
+            const { error: splitsError } = await supabase
+              .from('transaction_splits')
+              .insert(splitsToInsert);
+
+            if (splitsError) {
+              console.error('Erro ao criar splits:', splitsError);
+              toast({
+                title: "Aviso",
+                description: "Lançamento criado, mas houve erro ao salvar o rateio",
+                variant: "destructive"
+              });
+            }
+
+            // Se o lançamento foi criado como "pago", atualizar saldos das contas do rateio
+            if (formData.status === "pago") {
+              for (const rateio of formData.rateios) {
+                const balanceChange = formData.type === "receita" 
+                  ? rateio.amount 
+                  : -rateio.amount;
+
+                // Buscar saldo atual da conta
+                const { data: accountData, error: accountFetchError } = await supabase
+                  .from('accounts')
+                  .select('balance')
+                  .eq('id', rateio.account_id)
+                  .single();
+
+                if (!accountFetchError && accountData) {
+                  const newBalance = Number(accountData.balance) + balanceChange;
+
+                  await supabase
+                    .from('accounts')
+                    .update({ balance: newBalance })
+                    .eq('id', rateio.account_id);
+                }
+              }
+            }
+          }
         }
       }
 
@@ -582,8 +672,8 @@ export default function Lancamentos() {
       amount: transaction.amount.toString(),
       account_id: transaction.account_id || "",
       case_id: transaction.case_id || "",
-      client_id: "", // TODO: buscar do banco quando implementado
-      category_id: "", // TODO: buscar do banco quando implementado
+      client_id: transaction.client_id || "",
+      category_id: transaction.category_id || "",
       status: transaction.status,
       due_date: new Date(transaction.due_date),
       is_recurring: transaction.is_recurring,
@@ -597,12 +687,34 @@ export default function Lancamentos() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
+  // Estados para confirmação de exclusão
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteTransaction, setDeleteTransaction] = useState<Transaction | null>(null);
+
+  const handleDeleteClick = (transaction: Transaction) => {
+    setDeleteTransaction(transaction);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTransaction) return;
+    
     try {
+      // Primeiro excluir os splits se existirem
+      const { error: splitsError } = await supabase
+        .from('transaction_splits')
+        .delete()
+        .eq('transaction_id', deleteTransaction.id);
+
+      if (splitsError) {
+        console.error('Erro ao excluir splits:', splitsError);
+      }
+
+      // Depois excluir a transação
       const { error } = await supabase
         .from('transactions')
         .delete()
-        .eq('id', id);
+        .eq('id', deleteTransaction.id);
 
       if (error) {
         console.error('Erro ao excluir transação:', error);
@@ -622,6 +734,8 @@ export default function Lancamentos() {
       // Recalcular saldos após exclusão
       await recalculateAccountBalances();
       fetchTransactions();
+      setIsDeleteDialogOpen(false);
+      setDeleteTransaction(null);
     } catch (error) {
       console.error('Erro ao excluir transação:', error);
       toast({
@@ -1829,20 +1943,27 @@ export default function Lancamentos() {
                         {/* Conta */}
                         <div className="col-span-2 text-center min-w-0">
                           <span className="text-sm text-muted-foreground break-words">
-                            {getAccountName(transaction.account_id)}
+                            {getAccountName(transaction.account_id, transaction.splits)}
                           </span>
                         </div>
 
                         {/* Caso/Cliente */}
                         <div className="col-span-1 text-center min-w-0">
-                          {transaction.case_id && (
-                            <Badge variant="outline" className="text-xs">
-                              <Building className="h-3 w-3 mr-1" />
-                              <span className="truncate max-w-[100px]">
-                                {getCaseName(transaction.case_id)}
+                          <div className="flex flex-col gap-1">
+                            {transaction.case_id && (
+                              <Badge variant="outline" className="text-xs">
+                                <Building className="h-3 w-3 mr-1" />
+                                <span className="truncate max-w-[100px]">
+                                  {getCaseName(transaction.case_id)}
+                                </span>
+                              </Badge>
+                            )}
+                            {transaction.client_id && (
+                              <span className="text-xs text-muted-foreground">
+                                {getClientName(transaction.client_id)}
                               </span>
-                            </Badge>
-                          )}
+                            )}
+                          </div>
                         </div>
 
                         {/* Valor */}
@@ -1890,7 +2011,7 @@ export default function Lancamentos() {
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem 
-                                  onClick={() => handleDelete(transaction.id)}
+                                  onClick={() => handleDeleteClick(transaction)}
                                   className="text-red-600"
                                 >
                                   <Trash2 className="mr-2 h-4 w-4" />
@@ -2142,6 +2263,39 @@ export default function Lancamentos() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Dialog de Confirmação para Exclusão */}
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir este lançamento? Esta ação não pode ser desfeita.
+                <br /><br />
+                <strong>Descrição:</strong> {deleteTransaction?.description}<br />
+                <strong>Valor:</strong> {formatCurrency(deleteTransaction?.amount || 0)}<br />
+                <strong>Data de Vencimento:</strong> {deleteTransaction?.due_date ? format(new Date(deleteTransaction.due_date), "dd/MM/yyyy", { locale: ptBR }) : 'N/A'}
+                {deleteTransaction?.splits && deleteTransaction.splits.length > 0 && (
+                  <>
+                    <br />
+                    <strong>Contas do Rateio:</strong><br />
+                    {deleteTransaction.splits.map((split, index) => (
+                      <span key={index}>
+                        • {getAccountName(split.account_id)} ({split.percentage}%) - {formatCurrency(split.amount)}<br />
+                      </span>
+                    ))}
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteConfirm} className="bg-red-600 hover:bg-red-700">
+                Confirmar Exclusão
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Layout>
   );
