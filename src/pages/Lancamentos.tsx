@@ -2584,7 +2584,7 @@ export default function Lancamentos() {
 
         {/* Dialog de Pagamento */}
         <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 Registrar {paymentTransaction?.type === "receita" ? "Recebimento" : "Pagamento"}
