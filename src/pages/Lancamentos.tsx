@@ -125,6 +125,7 @@ export default function Lancamentos() {
   const [partialPaymentDate, setPartialPaymentDate] = useState<Date>();
   const [partialPaymentAccount, setPartialPaymentAccount] = useState("");
   const [partialObservations, setPartialObservations] = useState("");
+  const [newDueDate, setNewDueDate] = useState<Date>();
 
   // Estados para formulário de cobrança Asaas
   const [isAsaasDialogOpen, setIsAsaasDialogOpen] = useState(false);
@@ -618,6 +619,8 @@ export default function Lancamentos() {
         description: "Lançamento excluído com sucesso"
       });
 
+      // Recalcular saldos após exclusão
+      await recalculateAccountBalances();
       fetchTransactions();
     } catch (error) {
       console.error('Erro ao excluir transação:', error);
@@ -651,36 +654,7 @@ export default function Lancamentos() {
     paymentObservations: string | null = null,
     paymentAccountId: string | null = null
   ) => {
-    console.log('🔄 updateTransactionStatus chamada:', { id, status, paymentAccountId });
-    
     try {
-      // Primeiro, buscar os dados da transação para saber se precisa atualizar o saldo
-      const { data: transactionData, error: fetchError } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (fetchError) {
-        console.error('Erro ao buscar transação:', fetchError);
-        toast({
-          title: "Erro",
-          description: "Erro ao buscar dados da transação",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      console.log('📄 Dados da transação:', { 
-        oldStatus: transactionData.status, 
-        newStatus: status,
-        amount: transactionData.amount,
-        type: transactionData.type,
-        accountId: transactionData.account_id 
-      });
-
-      const oldStatus = transactionData.status;
-
       // Atualizar o status da transação
       const { error } = await supabase
         .from('transactions')
@@ -702,76 +676,13 @@ export default function Lancamentos() {
         return;
       }
 
-      // Atualizar saldo da conta se necessário
-      const accountId = paymentAccountId || transactionData.account_id;
-      console.log('🏦 Account ID para atualizar:', accountId);
-      
-      if (accountId && oldStatus !== status) {
-        let balanceChange = 0;
-        
-        if (status === "pago" && oldStatus === "pendente") {
-          // Transação foi quitada - somar receita ou subtrair despesa
-          balanceChange = transactionData.type === "receita" 
-            ? Number(transactionData.amount) 
-            : -Number(transactionData.amount);
-        } else if (status === "pendente" && oldStatus === "pago") {
-          // Transação foi desmarcada como paga - reverter operação
-          balanceChange = transactionData.type === "receita" 
-            ? -Number(transactionData.amount) 
-            : Number(transactionData.amount);
-        }
-
-        console.log('💰 Mudança de saldo:', balanceChange);
-
-        if (balanceChange !== 0) {
-          // Buscar saldo atual da conta
-          const { data: accountData, error: accountFetchError } = await supabase
-            .from('accounts')
-            .select('balance')
-            .eq('id', accountId)
-            .single();
-
-          if (accountFetchError) {
-            console.error('Erro ao buscar saldo da conta:', accountFetchError);
-            return;
-          }
-
-          console.log('📊 Saldo atual da conta:', accountData.balance);
-          const newBalance = Number(accountData.balance) + balanceChange;
-          console.log('📊 Novo saldo da conta:', newBalance);
-
-          const { error: accountError } = await supabase
-            .from('accounts')
-            .update({ balance: newBalance })
-            .eq('id', accountId);
-
-          if (accountError) {
-            console.error('Erro ao atualizar saldo da conta:', accountError);
-            // Se der erro na atualização da conta, reverter a transação
-            await supabase
-              .from('transactions')
-              .update({ status: oldStatus })
-              .eq('id', id);
-
-            toast({
-              title: "Erro",
-              description: "Erro ao atualizar saldo da conta. Status revertido.",
-              variant: "destructive"
-            });
-            return;
-          }
-
-          console.log('✅ Saldo da conta atualizado com sucesso');
-        }
-      } else {
-        console.log('⚠️  Não atualizando saldo - accountId:', accountId, 'mudou status:', oldStatus !== status);
-      }
-
       toast({
         title: "Status atualizado",
-        description: status === "pago" ? "Pagamento registrado e saldo atualizado com sucesso" : "Lançamento marcado como pendente e saldo ajustado"
+        description: status === "pago" ? "Pagamento registrado com sucesso" : "Lançamento marcado como pendente"
       });
 
+      // Recalcular saldos automaticamente após qualquer mudança
+      await recalculateAccountBalances();
       fetchTransactions();
     } catch (error) {
       console.error('Erro ao atualizar status:', error);
@@ -819,11 +730,12 @@ export default function Lancamentos() {
     setPartialPaymentDate(new Date());
     setPartialPaymentAccount(transaction.account_id || "");
     setPartialObservations("");
+    setNewDueDate(new Date());
     setIsPartialPaymentDialogOpen(true);
   };
 
   const handlePartialPaymentSubmit = async () => {
-    if (!partialTransaction || !partialPaymentDate || !partialAmount || !partialPaymentAccount) {
+    if (!partialTransaction || !partialPaymentDate || !partialAmount || !partialPaymentAccount || !newDueDate) {
       toast({
         title: "Erro",
         description: "Preencha todos os campos obrigatórios",
@@ -860,14 +772,14 @@ export default function Lancamentos() {
         .update({ amount: partialValue })
         .eq('id', partialTransaction.id);
 
-      // 3. Criar nova transação com valor restante
+      // 3. Criar nova transação com valor restante e nova data de vencimento
       const newTransaction = {
         type: partialTransaction.type,
         description: `${partialTransaction.description} - Saldo restante`,
         amount: remainingValue,
         account_id: partialTransaction.account_id,
         case_id: partialTransaction.case_id,
-        due_date: partialPaymentDate.toISOString().split('T')[0],
+        due_date: newDueDate.toISOString().split('T')[0],
         status: "pendente" as const,
         observations: `Valor restante de quitação parcial. Valor original: ${formatCurrency(partialTransaction.amount)}`,
         is_recurring: false,
@@ -970,12 +882,12 @@ export default function Lancamentos() {
     setIsAsaasDialogOpen(false);
   };
 
-  // Função para sincronizar saldos de transações já pagas
-  const syncPaidTransactionsBalances = async () => {
+  // Função para recalcular saldos automaticamente
+  const recalculateAccountBalances = async () => {
     try {
-      console.log('🔄 Iniciando sincronização de saldos para transações já pagas...');
+      console.log('🔄 Recalculando saldos das contas...');
       
-      // Buscar todas as transações pagas que ainda não atualizaram o saldo
+      // Buscar todas as transações pagas
       const { data: paidTransactions, error } = await supabase
         .from('transactions')
         .select('*')
@@ -987,63 +899,82 @@ export default function Lancamentos() {
         return;
       }
 
-      console.log(`📊 Encontradas ${paidTransactions?.length || 0} transações pagas para sincronizar`);
+      // Buscar todas as contas
+      const { data: accountsData, error: accountsError } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('user_id', user?.id);
 
-      // Agrupar por conta e calcular o ajuste necessário
-      const accountBalanceAdjustments = new Map();
+      if (accountsError) {
+        console.error('Erro ao buscar contas:', accountsError);
+        return;
+      }
 
+      // Calcular saldo correto para cada conta baseado apenas nas transações pagas
+      const accountBalances = new Map();
+
+      // Inicializar todas as contas com saldo 0
+      for (const account of accountsData || []) {
+        accountBalances.set(account.id, 0);
+      }
+
+      // Calcular saldo baseado nas transações pagas
       for (const transaction of paidTransactions || []) {
         const accountId = transaction.payment_account_id || transaction.account_id;
         if (!accountId) continue;
 
-        const current = accountBalanceAdjustments.get(accountId) || 0;
-        const adjustment = transaction.type === 'receita' 
+        const currentBalance = accountBalances.get(accountId) || 0;
+        const transactionAmount = transaction.type === 'receita' 
           ? Number(transaction.amount) 
           : -Number(transaction.amount);
         
-        accountBalanceAdjustments.set(accountId, current + adjustment);
+        accountBalances.set(accountId, currentBalance + transactionAmount);
       }
 
-      // Aplicar os ajustes nas contas
-      for (const [accountId, totalAdjustment] of accountBalanceAdjustments) {
-        if (totalAdjustment === 0) continue;
+      // Buscar splits (rateios) e aplicar também
+      const { data: splits, error: splitsError } = await supabase
+        .from('transaction_splits')
+        .select(`
+          *,
+          transactions!inner (
+            id,
+            status,
+            type,
+            user_id
+          )
+        `)
+        .eq('transactions.user_id', user?.id)
+        .eq('transactions.status', 'pago');
 
-        const { data: accountData, error: accountFetchError } = await supabase
-          .from('accounts')
-          .select('balance')
-          .eq('id', accountId)
-          .single();
-
-        if (accountFetchError) {
-          console.error(`Erro ao buscar conta ${accountId}:`, accountFetchError);
-          continue;
+      if (!splitsError && splits) {
+        for (const split of splits) {
+          const currentBalance = accountBalances.get(split.account_id) || 0;
+          const splitAmount = split.transactions.type === 'receita' 
+            ? Number(split.amount) 
+            : -Number(split.amount);
+          
+          accountBalances.set(split.account_id, currentBalance + splitAmount);
         }
+      }
 
-        const newBalance = Number(accountData.balance) + totalAdjustment;
-
+      // Atualizar os saldos das contas no banco
+      for (const [accountId, correctBalance] of accountBalances) {
         const { error: updateError } = await supabase
           .from('accounts')
-          .update({ balance: newBalance })
+          .update({ balance: correctBalance })
           .eq('id', accountId);
 
         if (updateError) {
-          console.error(`Erro ao atualizar conta ${accountId}:`, updateError);
+          console.error(`Erro ao atualizar saldo da conta ${accountId}:`, updateError);
         } else {
-          console.log(`✅ Conta ${accountId} atualizada: ${accountData.balance} → ${newBalance}`);
+          console.log(`✅ Conta ${accountId} atualizada para saldo: ${correctBalance}`);
         }
       }
 
-      toast({
-        title: "Sincronização completa",
-        description: `Saldos das contas atualizados para ${paidTransactions?.length || 0} transações pagas.`
-      });
+      console.log('✅ Recálculo de saldos concluído');
+      fetchAccounts();
     } catch (error) {
-      console.error('Erro na sincronização:', error);
-      toast({
-        title: "Erro na sincronização",
-        description: "Erro ao sincronizar saldos das transações pagas.",
-        variant: "destructive"
-      });
+      console.error('Erro no recálculo de saldos:', error);
     }
   };
 
@@ -1807,14 +1738,6 @@ export default function Lancamentos() {
           <CardHeader className="pb-2">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-semibold">Lançamentos</h3>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={syncPaidTransactionsBalances}
-                className="text-sm"
-              >
-                Sincronizar Saldos
-              </Button>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -2170,6 +2093,29 @@ export default function Lancamentos() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Nova Data de Vencimento para o Saldo Restante *</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {newDueDate ? format(newDueDate, "PPP", { locale: ptBR }) : "Selecione a nova data de vencimento"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={newDueDate}
+                      onSelect={setNewDueDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div className="space-y-2">
