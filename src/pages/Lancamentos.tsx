@@ -269,6 +269,23 @@ export default function Lancamentos() {
     return isExpense ? `-${formatted}` : formatted;
   };
 
+  const isOverdue = (dueDate: string, status: string) => {
+    if (status === "pago") return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(dueDate);
+    due.setHours(0, 0, 0, 0);
+    return due < today;
+  };
+
+  const getStatusDisplay = (transaction: Transaction) => {
+    if (transaction.status === "pago") return { text: "Pago", variant: "default" as const, className: "text-green-700 bg-green-100" };
+    if (isOverdue(transaction.due_date, transaction.status)) {
+      return { text: "INADIMPLENTE", variant: "destructive" as const, className: "text-red-700 bg-red-100" };
+    }
+    return { text: "Pendente", variant: "outline" as const, className: "text-yellow-700 bg-yellow-100" };
+  };
+
   const getAccountName = (accountId?: string) => {
     if (!accountId) return "Não informada";
     const account = accounts.find(acc => acc.id === accountId);
@@ -1453,142 +1470,118 @@ export default function Lancamentos() {
           </CardContent>
         </Card>
 
-        {/* Lista de Lançamentos */}
-        <div className="space-y-4">
-          {filteredTransactions.length === 0 ? (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center py-8">
-                  <Receipt className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-foreground mb-2">
-                    Nenhum lançamento encontrado
-                  </h3>
-                  <p className="text-muted-foreground mb-4">
-                    Comece criando seu primeiro lançamento financeiro
-                  </p>
-                  <Button onClick={() => setIsDialogOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Criar Primeiro Lançamento
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            filteredTransactions.map((transaction) => (
-              <Card key={transaction.id} className="hover:shadow-md transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        {transaction.type === "receita" ? (
-                          <ArrowUpCircle className="h-5 w-5 text-green-600" />
-                        ) : (
-                          <ArrowDownCircle className="h-5 w-5 text-red-600" />
-                        )}
-                        {transaction.description}
-                        {transaction.is_recurring && (
-                          <Repeat className="h-4 w-4 ml-1 text-muted-foreground" />
-                        )}
-                      </CardTitle>
-                      <div className="flex items-center gap-4 mt-2 flex-wrap">
-                        <Badge 
-                          variant={transaction.status === "pago" ? "default" : "outline"}
-                          className={transaction.status === "pago" ? "status-paid" : "status-pending"}
-                        >
-                          {transaction.status === "pago" ? "Pago" : "Pendente"}
+        {/* Lista de Lançamentos Compactada */}
+        <Card>
+          <CardContent className="p-0">
+            {filteredTransactions.length === 0 ? (
+              <div className="text-center py-8 px-6">
+                <Receipt className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-foreground mb-2">
+                  Nenhum lançamento encontrado
+                </h3>
+                <p className="text-muted-foreground mb-4">
+                  Comece criando seu primeiro lançamento financeiro
+                </p>
+                <Button onClick={() => setIsDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Criar Primeiro Lançamento
+                </Button>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {filteredTransactions.map((transaction) => {
+                  const statusInfo = getStatusDisplay(transaction);
+                  return (
+                    <div key={transaction.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {transaction.type === "receita" ? (
+                            <ArrowUpCircle className="h-4 w-4 text-green-600 shrink-0" />
+                          ) : (
+                            <ArrowDownCircle className="h-4 w-4 text-red-600 shrink-0" />
+                          )}
+                          <div className="truncate">
+                            <span className="font-medium">{transaction.description}</span>
+                            {transaction.is_recurring && (
+                              <Repeat className="h-3 w-3 ml-1 text-muted-foreground inline" />
+                            )}
+                          </div>
+                        </div>
+
+                        <Badge className={statusInfo.className}>
+                          {statusInfo.text}
                         </Badge>
-                        <Badge variant={transaction.type === 'receita' ? 'default' : 'secondary'}>
+
+                        <Badge variant={transaction.type === 'receita' ? 'default' : 'secondary'} 
+                               className={transaction.type === 'receita' ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''}>
                           {transaction.type === 'receita' ? 'Receita' : 'Despesa'}
                         </Badge>
+
+                        <span className="text-sm text-muted-foreground">
+                          {format(new Date(transaction.due_date), "dd/MM/yyyy", { locale: ptBR })}
+                        </span>
+
+                        <span className="text-sm text-muted-foreground truncate max-w-[150px]">
+                          {getAccountName(transaction.account_id)}
+                        </span>
+
                         {transaction.case_id && (
-                          <Badge variant="outline">
+                          <Badge variant="outline" className="hidden md:inline-flex">
                             <Building className="h-3 w-3 mr-1" />
                             {getCaseName(transaction.case_id)}
                           </Badge>
                         )}
                       </div>
-                    </div>
-                    
-                    <div className="text-right">
-                      <div className={`text-2xl font-bold ${
-                        transaction.type === 'receita' ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {formatCurrency(transaction.amount)}
-                      </div>
-                    </div>
-                  </div>
-                </CardHeader>
-                
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Vencimento:</span>
-                      <div className="font-medium">
-                        {format(new Date(transaction.due_date), "dd/MM/yyyy", { locale: ptBR })}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Conta:</span>
-                      <div className="font-medium">{getAccountName(transaction.account_id)}</div>
-                    </div>
-                    {transaction.payment_date && (
-                      <div>
-                        <span className="text-muted-foreground">Data Pagamento:</span>
-                        <div className="font-medium">
-                          {format(new Date(transaction.payment_date), "dd/MM/yyyy", { locale: ptBR })}
+                      
+                      <div className="flex items-center gap-4">
+                        <div className={`text-lg font-bold ${
+                          transaction.type === 'receita' ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {formatCurrency(transaction.amount, transaction.type === 'despesa')}
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEdit(transaction)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={transaction.status === "pendente" ? "default" : "secondary"}
+                            onClick={() => toggleStatus(transaction)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <DollarSign className="h-3 w-3" />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem 
+                                onClick={() => handleDelete(transaction.id)}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
-                    )}
-                  </div>
-                  
-                  {transaction.observations && (
-                    <div className="mt-4 p-3 bg-muted rounded-lg">
-                      <span className="text-muted-foreground text-sm">Observações:</span>
-                      <div className="text-sm mt-1">{transaction.observations}</div>
                     </div>
-                  )}
-                  
-                  <div className="flex justify-end gap-2 mt-4">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEdit(transaction)}
-                      className="flex items-center gap-1"
-                    >
-                      <Edit className="h-3 w-3" />
-                      Editar
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={transaction.status === "pendente" ? "default" : "secondary"}
-                      onClick={() => toggleStatus(transaction)}
-                      className="flex items-center gap-1"
-                    >
-                      <DollarSign className="h-3 w-3" />
-                      {transaction.status === "pendente" ? "Quitar" : "Pendente"}
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem 
-                          onClick={() => handleDelete(transaction.id)}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
           </TabsContent>
 
           <TabsContent value="recorrentes">
