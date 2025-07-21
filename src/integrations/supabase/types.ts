@@ -295,6 +295,7 @@ export type Database = {
           amount: number
           case_id: string | null
           category_id: string | null
+          client_id: string | null
           created_at: string
           description: string
           due_date: string
@@ -320,6 +321,7 @@ export type Database = {
           amount: number
           case_id?: string | null
           category_id?: string | null
+          client_id?: string | null
           created_at?: string
           description: string
           due_date: string
@@ -345,6 +347,7 @@ export type Database = {
           amount?: number
           case_id?: string | null
           category_id?: string | null
+          client_id?: string | null
           created_at?: string
           description?: string
           due_date?: string
@@ -385,6 +388,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
           {
