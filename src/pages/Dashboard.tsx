@@ -498,13 +498,13 @@ const Dashboard = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={350}>
                 <PieChart>
                   <Pie
                     data={dashboardData.chartData.statusDistribution}
                     cx="50%"
                     cy="50%"
-                    outerRadius={100}
+                    outerRadius={120}
                     fill="#8884d8"
                     dataKey="value"
                     label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
@@ -529,23 +529,24 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               {dashboardData.chartData.accountsBalance.length > 0 ? (
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart 
-                    data={dashboardData.chartData.accountsBalance}
-                    layout="horizontal"
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      type="number"
-                      tickFormatter={(value) => 
-                        new Intl.NumberFormat('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                          minimumFractionDigits: 0
-                        }).format(value)
-                      }
-                    />
-                    <YAxis type="category" dataKey="name" />
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={dashboardData.chartData.accountsBalance}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="balance"
+                      label={({ name, value }) => `${name}: ${new Intl.NumberFormat('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL'
+                      }).format(value)}`}
+                    >
+                      {dashboardData.chartData.accountsBalance.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={`hsl(${index * 137.5}, 70%, 50%)`} />
+                      ))}
+                    </Pie>
                     <Tooltip 
                       formatter={(value: number) => [
                         new Intl.NumberFormat('pt-BR', {
@@ -555,8 +556,7 @@ const Dashboard = () => {
                         'Saldo'
                       ]}
                     />
-                    <Bar dataKey="balance" fill="#3b82f6" />
-                  </BarChart>
+                  </PieChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
