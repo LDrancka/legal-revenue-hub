@@ -28,7 +28,8 @@ import {
   Building,
   MoreVertical,
   DollarSign,
-  AlertTriangle
+  AlertTriangle,
+  Receipt
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -90,6 +91,24 @@ export default function Lancamentos() {
   const [paymentDate, setPaymentDate] = useState<Date>();
   const [paymentObservations, setPaymentObservations] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
+
+  // Estados para formulário de cobrança Asaas
+  const [isAsaasDialogOpen, setIsAsaasDialogOpen] = useState(false);
+  const [asaasLoading, setAsaasLoading] = useState(false);
+  const [asaasResult, setAsaasResult] = useState<{
+    sucesso: boolean;
+    mensagem: string;
+    linkPagamento?: string;
+    cobrancaId?: string;
+  } | null>(null);
+  const [asaasFormData, setAsaasFormData] = useState({
+    descricao: "",
+    valor: "",
+    vencimento: new Date(),
+    contatoNome: "",
+    contatoEmail: "",
+    contatoCpfCnpj: ""
+  });
 
   // Form state
   const [formData, setFormData] = useState({
@@ -538,6 +557,76 @@ export default function Lancamentos() {
     setPaymentTransaction(null);
   };
 
+  const handleAsaasSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!asaasFormData.descricao || !asaasFormData.valor || !asaasFormData.contatoNome) {
+      toast({
+        title: "Erro",
+        description: "Preencha os campos obrigatórios: Descrição, Valor e Nome do cliente",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setAsaasLoading(true);
+    setAsaasResult(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('criar-cobranca-asaas', {
+        body: {
+          descricao: asaasFormData.descricao,
+          valor: parseFloat(asaasFormData.valor),
+          vencimento: asaasFormData.vencimento.toISOString().split('T')[0],
+          contatoNome: asaasFormData.contatoNome,
+          contatoEmail: asaasFormData.contatoEmail || undefined,
+          contatoCpfCnpj: asaasFormData.contatoCpfCnpj || undefined
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setAsaasResult(data);
+      
+      if (data.sucesso) {
+        toast({
+          title: "Sucesso",
+          description: data.mensagem
+        });
+      } else {
+        toast({
+          title: "Erro",
+          description: data.mensagem,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao criar cobrança:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao criar cobrança no Asaas",
+        variant: "destructive"
+      });
+    } finally {
+      setAsaasLoading(false);
+    }
+  };
+
+  const resetAsaasForm = () => {
+    setAsaasFormData({
+      descricao: "",
+      valor: "",
+      vencimento: new Date(),
+      contatoNome: "",
+      contatoEmail: "",
+      contatoCpfCnpj: ""
+    });
+    setAsaasResult(null);
+    setIsAsaasDialogOpen(false);
+  };
+
   const resetForm = () => {
     setFormData({
       type: "",
@@ -580,13 +669,150 @@ export default function Lancamentos() {
             <p className="text-muted-foreground">Gerencie receitas e despesas</p>
           </div>
           
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="default">
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Lançamento
-              </Button>
-            </DialogTrigger>
+          <div className="flex gap-2">
+            <Dialog open={isAsaasDialogOpen} onOpenChange={setIsAsaasDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Criar Cobrança
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Criar Cobrança no Asaas</DialogTitle>
+                  <DialogDescription>
+                    Preencha os dados para gerar uma cobrança via boleto
+                  </DialogDescription>
+                </DialogHeader>
+
+                {asaasResult ? (
+                  <div className="space-y-4">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground mb-2">
+                        {asaasResult.mensagem}
+                      </p>
+                      {asaasResult.sucesso && asaasResult.linkPagamento && (
+                        <Button
+                          onClick={() => window.open(asaasResult.linkPagamento, '_blank')}
+                          className="w-full"
+                        >
+                          Ver Boleto
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <Button variant="outline" onClick={resetAsaasForm}>
+                        Nova Cobrança
+                      </Button>
+                      <Button variant="default" onClick={resetAsaasForm}>
+                        Fechar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleAsaasSubmit} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="descricao">Descrição *</Label>
+                      <Input
+                        id="descricao"
+                        placeholder="Descrição da cobrança"
+                        value={asaasFormData.descricao}
+                        onChange={(e) => setAsaasFormData({...asaasFormData, descricao: e.target.value})}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="valor">Valor *</Label>
+                      <Input
+                        id="valor"
+                        type="number"
+                        step="0.01"
+                        placeholder="0,00"
+                        value={asaasFormData.valor}
+                        onChange={(e) => setAsaasFormData({...asaasFormData, valor: e.target.value})}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Vencimento *</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="w-full justify-start text-left font-normal"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {asaasFormData.vencimento ? format(asaasFormData.vencimento, "PPP", { locale: ptBR }) : "Selecione a data"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={asaasFormData.vencimento}
+                            onSelect={(date) => date && setAsaasFormData({...asaasFormData, vencimento: date})}
+                            initialFocus
+                            className="p-3 pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="contatoNome">Nome do Cliente *</Label>
+                      <Input
+                        id="contatoNome"
+                        placeholder="Nome completo do cliente"
+                        value={asaasFormData.contatoNome}
+                        onChange={(e) => setAsaasFormData({...asaasFormData, contatoNome: e.target.value})}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="contatoEmail">E-mail do Cliente</Label>
+                      <Input
+                        id="contatoEmail"
+                        type="email"
+                        placeholder="email@exemplo.com"
+                        value={asaasFormData.contatoEmail}
+                        onChange={(e) => setAsaasFormData({...asaasFormData, contatoEmail: e.target.value})}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="contatoCpfCnpj">CPF ou CNPJ do Cliente</Label>
+                      <Input
+                        id="contatoCpfCnpj"
+                        placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                        value={asaasFormData.contatoCpfCnpj}
+                        onChange={(e) => setAsaasFormData({...asaasFormData, contatoCpfCnpj: e.target.value})}
+                      />
+                    </div>
+
+                    <div className="flex justify-end space-x-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={resetAsaasForm}
+                        disabled={asaasLoading}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button type="submit" disabled={asaasLoading}>
+                        {asaasLoading ? "Criando..." : "Criar Cobrança"}
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="default">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Lançamento
+                </Button>
+              </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
@@ -807,6 +1033,7 @@ export default function Lancamentos() {
               </form>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         <Tabs defaultValue="lancamentos" className="w-full">
