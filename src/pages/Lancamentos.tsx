@@ -896,12 +896,13 @@ export default function Lancamentos() {
                 </div>
 
                 {/* Opção de Rateio */}
-                <div className="space-y-2">
+                <div className="space-y-4 border-t pt-4">
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="rateio"
                       checked={formData.temRateio}
                       onCheckedChange={(checked) => {
+                        console.log('Rateio checkbox changed:', checked); // Debug
                         setFormData({
                           ...formData, 
                           temRateio: checked as boolean,
@@ -912,7 +913,7 @@ export default function Lancamentos() {
                         });
                       }}
                     />
-                    <Label htmlFor="rateio" className="text-sm">Dividir entre contas (Rateio)</Label>
+                    <Label htmlFor="rateio" className="text-sm font-medium">🔄 Dividir entre contas (Rateio)</Label>
                   </div>
                   
                   {formData.temRateio && (
