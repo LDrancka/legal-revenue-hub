@@ -116,7 +116,8 @@ export function generateReceipt(data: ReceiptData): void {
   
   // Função para gerar uma via
   const generateVia = (startY: number, viaNumber: number) => {
-    let currentY = startY + 20;
+    let currentY = startY + 15;
+    const maxYLimit = startY + viaHeight - 30;
   
     // Título centralizado - RECIBO DE PAGAMENTO
     doc.setFontSize(14);
@@ -131,154 +132,132 @@ export function generateReceipt(data: ReceiptData): void {
     doc.setFont("helvetica", "bold");
     doc.text(valorFormatado, pageWidth - margin, currentY, { align: 'right' });
     
-    currentY += 12;
+    currentY += 15;
     
-    // Texto do recibo seguindo o formato especificado
+    // PRIMEIRO: Texto "Recebi(emos)"
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     
-    // Montar o texto completo do recibo
     const clientNameUpper = data.clientName?.toUpperCase() || "CLIENTE";
     const valorExtenso = numberToWords(data.amount);
     
-    // Texto base
-    let textoCompleto = `Recebi(emos) de ${clientNameUpper}`;
-    
-    // CPF se existir
+    let textoRecebi = `Recebi(emos) de ${clientNameUpper}`;
     if (data.clientCpf) {
-      textoCompleto += `, CPF ${data.clientCpf}`;
+      textoRecebi += `, CPF ${data.clientCpf}`;
     }
-    
-    textoCompleto += `, a importância de ${valorExtenso}, referente à ${data.description}.`;
+    textoRecebi += `, a importância de ${valorExtenso}, referente à ${data.description}.`;
     
     // Quebrar o texto para caber na largura disponível
-    const textAvailableWidth = pageWidth - 2 * margin;
-    const lines = doc.splitTextToSize(textoCompleto, textAvailableWidth);
+    const recebiWidth = pageWidth - 2 * margin;
+    const recebiLines = doc.splitTextToSize(textoRecebi, recebiWidth);
     
-    // Renderizar cada linha
-    lines.forEach((line: string, index: number) => {
-      // Verificar se a linha contém partes que devem ser em negrito
-      if (line.includes(clientNameUpper) || line.includes(valorExtenso) || line.includes(data.description)) {
-        // Processar linha com formatação mista
-        let remainingText = line;
-        let currentX = margin;
+    // Renderizar texto "Recebi(emos)" com formatação em negrito
+    recebiLines.forEach((line: string) => {
+      doc.setFont("helvetica", "normal");
+      let currentX = margin;
+      let remainingText = line;
+      
+      // Nome do cliente em negrito
+      if (remainingText.includes(clientNameUpper)) {
+        const parts = remainingText.split(clientNameUpper);
+        doc.text(parts[0], currentX, currentY);
+        currentX += doc.getTextWidth(parts[0]);
         
-        // Verificar se contém nome do cliente
-        if (remainingText.includes(clientNameUpper)) {
-          const parts = remainingText.split(clientNameUpper);
-          doc.setFont("helvetica", "normal");
-          doc.text(parts[0], currentX, currentY);
-          currentX += doc.getTextWidth(parts[0]);
-          
-          doc.setFont("helvetica", "bold");
-          doc.text(clientNameUpper, currentX, currentY);
-          currentX += doc.getTextWidth(clientNameUpper);
-          
-          remainingText = parts[1] || '';
-        }
+        doc.setFont("helvetica", "bold");
+        doc.text(clientNameUpper, currentX, currentY);
+        currentX += doc.getTextWidth(clientNameUpper);
         
-        // Verificar se contém valor por extenso
-        if (remainingText.includes(valorExtenso)) {
-          const parts = remainingText.split(valorExtenso);
-          doc.setFont("helvetica", "normal");
-          doc.text(parts[0], currentX, currentY);
-          currentX += doc.getTextWidth(parts[0]);
-          
-          doc.setFont("helvetica", "bold");
-          doc.text(valorExtenso, currentX, currentY);
-          currentX += doc.getTextWidth(valorExtenso);
-          
-          remainingText = parts[1] || '';
-        }
-        
-        // Verificar se contém descrição
-        if (remainingText.includes(data.description)) {
-          const parts = remainingText.split(data.description);
-          doc.setFont("helvetica", "normal");
-          doc.text(parts[0], currentX, currentY);
-          currentX += doc.getTextWidth(parts[0]);
-          
-          doc.setFont("helvetica", "bold");
-          doc.text(data.description, currentX, currentY);
-          currentX += doc.getTextWidth(data.description);
-          
-          remainingText = parts[1] || '';
-        }
-        
-        // Resto do texto
-        if (remainingText) {
-          doc.setFont("helvetica", "normal");
-          doc.text(remainingText, currentX, currentY);
-        }
-      } else {
-        // Linha normal sem formatação especial
         doc.setFont("helvetica", "normal");
-        doc.text(line, margin, currentY);
+        remainingText = parts[1] || '';
       }
       
-      currentY += 7; // Espaçamento entre linhas
+      // Valor por extenso em negrito
+      if (remainingText.includes(valorExtenso)) {
+        const parts = remainingText.split(valorExtenso);
+        doc.text(parts[0], currentX, currentY);
+        currentX += doc.getTextWidth(parts[0]);
+        
+        doc.setFont("helvetica", "bold");
+        doc.text(valorExtenso, currentX, currentY);
+        currentX += doc.getTextWidth(valorExtenso);
+        
+        doc.setFont("helvetica", "normal");
+        remainingText = parts[1] || '';
+      }
+      
+      // Descrição em negrito
+      if (remainingText.includes(data.description)) {
+        const parts = remainingText.split(data.description);
+        doc.text(parts[0], currentX, currentY);
+        currentX += doc.getTextWidth(parts[0]);
+        
+        doc.setFont("helvetica", "bold");
+        doc.text(data.description, currentX, currentY);
+        currentX += doc.getTextWidth(data.description);
+        
+        doc.setFont("helvetica", "normal");
+        remainingText = parts[1] || '';
+      }
+      
+      // Resto do texto
+      if (remainingText) {
+        doc.text(remainingText, currentX, currentY);
+      }
+      
+      currentY += 6;
     });
     
-    currentY += 8; // Espaço extra após o texto principal
-    // Verificar se há espaço suficiente para o parágrafo de quitação
-    const maxYLimit = maxYForVia(startY);
-    if (currentY + 60 > maxYLimit) {
-      // Se não há espaço suficiente, usar menos espaço
-      currentY = maxYLimit - 60;
-    }
+    currentY += 10; // Espaço entre os dois parágrafos
     
-    // Parágrafo sobre quitação - usando quebra de linha inteligente
+    // SEGUNDO: Texto de quitação
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     
-    let quitacaoTextoCompleto = "Para maior clareza, firmo(amos) o presente recibo que comprova o recebimento integral do valor mencionado, concedendo quitação plena, geral e irrevogável pela quantia recebida";
+    let quitacaoTexto = "Para maior clareza, firmo(amos) o presente recibo que comprova o recebimento integral do valor mencionado, concedendo quitação plena, geral e irrevogável pela quantia recebida";
     
     // Adicionar informações de pagamento se existirem
     if (data.paymentMethod && data.paymentMethod !== 'Dinheiro') {
-      quitacaoTextoCompleto += `, via ${data.paymentMethod}`;
+      quitacaoTexto += `, via ${data.paymentMethod}`;
       
       if (data.accountData && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
-        quitacaoTextoCompleto += ` (${data.accountData}`;
+        quitacaoTexto += ` (${data.accountData}`;
         
         if (data.pixKey && data.paymentMethod === 'PIX') {
-          quitacaoTextoCompleto += ` - Chave PIX: ${data.pixKey}`;
+          quitacaoTexto += ` - Chave PIX: ${data.pixKey}`;
         }
         
         if (data.beneficiaryName && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
-          quitacaoTextoCompleto += ` - ${data.beneficiaryName}`;
+          quitacaoTexto += ` - ${data.beneficiaryName}`;
         }
         
-        quitacaoTextoCompleto += ')';
+        quitacaoTexto += ')';
       }
     }
     
-    quitacaoTextoCompleto += '.';
+    quitacaoTexto += '.';
     
-    // Quebrar o texto para caber na largura disponível
-    const quitacaoAvailableWidth = pageWidth - 2 * margin;
-    const quitacaoLines = doc.splitTextToSize(quitacaoTextoCompleto, quitacaoAvailableWidth);
+    // Quebrar o texto de quitação
+    const quitacaoWidth = pageWidth - 2 * margin;
+    const quitacaoLines = doc.splitTextToSize(quitacaoTexto, quitacaoWidth);
     
-    // Verificar se as linhas cabem no espaço disponível
-    const lineHeight = 5;
-    const totalTextHeight = quitacaoLines.length * lineHeight;
-    
-    if (currentY + totalTextHeight > maxYLimit - 35) {
-      // Ajustar fonte para caber
+    // Verificar se há espaço suficiente
+    const spaceNeeded = quitacaoLines.length * 5 + 40; // linhas + espaço para assinatura
+    if (currentY + spaceNeeded > maxYLimit) {
       doc.setFontSize(8);
-      const newLines = doc.splitTextToSize(quitacaoTextoCompleto, quitacaoAvailableWidth);
-      newLines.forEach((line: string, index: number) => {
-        doc.text(line, margin, currentY + (index * 4));
+      const compactLines = doc.splitTextToSize(quitacaoTexto, quitacaoWidth);
+      compactLines.forEach((line: string) => {
+        doc.text(line, margin, currentY);
+        currentY += 4;
       });
-      currentY += newLines.length * 4;
     } else {
-      quitacaoLines.forEach((line: string, index: number) => {
-        doc.text(line, margin, currentY + (index * lineHeight));
+      quitacaoLines.forEach((line: string) => {
+        doc.text(line, margin, currentY);
+        currentY += 5;
       });
-      currentY += totalTextHeight;
     }
     
-    doc.setFontSize(10); // Voltar ao tamanho normal
-    currentY += 12;
+    doc.setFontSize(10);
+    currentY += 15;
     
     // Verificar espaço para cidade/data
     if (currentY + 25 > maxYForVia(startY)) {
