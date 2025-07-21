@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { Plus, Users, Edit, Trash2, Phone, Mail, MapPin, User, Search } from "lucide-react";
 
 interface Client {
@@ -40,50 +41,30 @@ export default function Contatos() {
     status: "ativo" as "ativo" | "inativo"
   });
 
-  // Simulated data for now - will work once types are updated
   const loadClients = async () => {
     setLoading(true);
     try {
-      // For now, use simulated data until Supabase types are updated
-      const mockContacts: Client[] = [
-        {
-          id: "1",
-          name: "João Silva",
-          email: "joao@email.com",
-          phone: "(11) 99999-9999",
-          document: "123.456.789-00",
-          address: "Rua A, 123",
-          notes: "Contato VIP",
-          status: "ativo",
-          created_at: new Date().toISOString()
-        },
-        {
-          id: "2", 
-          name: "Maria Santos",
-          email: "maria@email.com",
-          phone: "(11) 88888-8888",
-          document: "987.654.321-00",
-          address: "Rua B, 456",
-          notes: "",
-          status: "ativo",
-          created_at: new Date().toISOString()
-        }
-      ];
-      
-      // Simulate API delay
-      setTimeout(() => {
-        setClients(mockContacts);
-        setLoading(false);
-      }, 500);
-      
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setClients((data || []).map(client => ({
+        ...client,
+        status: client.status as 'ativo' | 'inativo'
+      })));
     } catch (error: any) {
       console.error('Erro ao carregar contatos:', error);
-      setClients([]);
-      setLoading(false);
       toast({
-        title: "Info",
-        description: "Usando dados de exemplo. A funcionalidade completa estará disponível após a atualização dos tipos do banco.",
+        title: "Erro",
+        description: "Erro ao carregar contatos",
+        variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -100,25 +81,32 @@ export default function Contatos() {
     setLoading(true);
     try {
       if (editingId) {
-        // Update existing client in mock data
-        setClients(prev => prev.map(client => 
-          client.id === editingId 
-            ? { ...client, ...formData, id: editingId }
-            : client
-        ));
+        // Update existing client
+        const { error } = await supabase
+          .from('clients')
+          .update({
+            ...formData,
+            user_id: user.id
+          })
+          .eq('id', editingId);
+
+        if (error) throw error;
         toast({ title: "Sucesso", description: "Contato atualizado!" });
       } else {
-        // Add new client to mock data
-        const newClient: Client = {
-          id: Date.now().toString(),
-          ...formData,
-          created_at: new Date().toISOString()
-        };
-        setClients(prev => [...prev, newClient]);
+        // Create new client
+        const { error } = await supabase
+          .from('clients')
+          .insert({
+            ...formData,
+            user_id: user.id
+          });
+
+        if (error) throw error;
         toast({ title: "Sucesso", description: "Contato criado!" });
       }
 
       resetForm();
+      loadClients(); // Reload data
     } catch (error: any) {
       console.error('Erro ao salvar contato:', error);
       toast({
@@ -150,8 +138,15 @@ export default function Contatos() {
 
     setLoading(true);
     try {
-      setClients(prev => prev.filter(client => client.id !== id));
+      const { error } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
       toast({ title: "Sucesso", description: "Contato excluído!" });
+      loadClients(); // Reload data
     } catch (error: any) {
       console.error('Erro ao excluir contato:', error);
       toast({
