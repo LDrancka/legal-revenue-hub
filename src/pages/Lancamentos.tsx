@@ -698,7 +698,7 @@ export default function Lancamentos() {
       recurrence_end_date: undefined,
       observations: "",
       temRateio: false,
-      rateios: []
+      rateios: [{ id: Date.now().toString(), account_id: "", amount: 0, percentage: 100 }]
     });
     setEditingTransaction(null);
     setIsDialogOpen(false);

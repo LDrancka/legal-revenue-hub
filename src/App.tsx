@@ -8,7 +8,7 @@ import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
-import LancamentosFiltered from "./pages/LancamentosFiltered";
+import Lancamentos from "./pages/Lancamentos";
 import Transferencias from "./pages/Transferencias";
 import Clientes from "./pages/Clientes";
 import Convites from "./pages/Convites";
@@ -49,7 +49,7 @@ const App = () => (
               path="/lancamentos" 
               element={
                 <ProtectedRoute>
-                  <LancamentosFiltered />
+                  <Lancamentos />
                 </ProtectedRoute>
               } 
             />
