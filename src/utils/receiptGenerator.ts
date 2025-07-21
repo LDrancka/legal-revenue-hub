@@ -140,11 +140,26 @@ export function generateReceipt(data: ReceiptData): void {
     
     currentY += 15;
     
-    // Valor alinhado à direita em negrito
+    // Valor alinhado à direita em negrito com quadrado ao redor
     const valorFormatado = `R$ ${data.amount.toFixed(2).replace('.', ',')}`;
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text(valorFormatado, pageWidth - margin, currentY, { align: 'right' });
+    
+    // Calcular dimensões do quadrado
+    const valorWidth = doc.getTextWidth(valorFormatado);
+    const valorHeight = 8;
+    const padding = 4;
+    const rectWidth = valorWidth + (padding * 2);
+    const rectHeight = valorHeight + (padding * 2);
+    const rectX = pageWidth - margin - rectWidth;
+    const rectY = currentY - valorHeight - padding;
+    
+    // Desenhar quadrado ao redor do valor
+    doc.setLineWidth(1);
+    doc.rect(rectX, rectY, rectWidth, rectHeight);
+    
+    // Texto do valor centralizado no quadrado
+    doc.text(valorFormatado, rectX + rectWidth/2, currentY, { align: 'center' });
     
     currentY += 15;
     
@@ -253,9 +268,34 @@ export function generateReceipt(data: ReceiptData): void {
           remainingText = parts[1] || '';
         }
         
-        // Resto do texto
+        // Resto do texto com formatação de quitação
         if (remainingText) {
-          doc.text(remainingText, currentX, currentY);
+          // Verificar se tem palavras de quitação para destacar
+          if (remainingText.includes("quitação") || remainingText.includes("plena") || remainingText.includes("geral") || remainingText.includes("irrevogável")) {
+            const palavrasDestaque = ["quitação", "plena", "geral", "irrevogável"];
+            let textoTemp = remainingText;
+            
+            palavrasDestaque.forEach(palavra => {
+              if (textoTemp.includes(palavra)) {
+                const parts = textoTemp.split(palavra);
+                doc.text(parts[0], currentX, currentY);
+                currentX += doc.getTextWidth(parts[0]);
+                
+                doc.setFont("helvetica", "bold");
+                doc.text(palavra, currentX, currentY);
+                currentX += doc.getTextWidth(palavra);
+                
+                doc.setFont("helvetica", "normal");
+                textoTemp = parts[1] || '';
+              }
+            });
+            
+            if (textoTemp) {
+              doc.text(textoTemp, currentX, currentY);
+            }
+          } else {
+            doc.text(remainingText, currentX, currentY);
+          }
         }
       } else {
         // Justificar linhas intermediárias
@@ -269,6 +309,14 @@ export function generateReceipt(data: ReceiptData): void {
             doc.text(word, currentX, currentY);
             doc.setFont("helvetica", "normal");
           } else if (word.includes(data.description) || word === data.description) {
+            doc.setFont("helvetica", "bold");
+            doc.text(word, currentX, currentY);
+            doc.setFont("helvetica", "normal");
+          } else if (valorExtenso.includes(word) || word.includes("reais") || word.includes("centavo")) {
+            doc.setFont("helvetica", "bold");
+            doc.text(word, currentX, currentY);
+            doc.setFont("helvetica", "normal");
+          } else if (word.includes("quitação") || word.includes("plena") || word.includes("geral") || word.includes("irrevogável")) {
             doc.setFont("helvetica", "bold");
             doc.text(word, currentX, currentY);
             doc.setFont("helvetica", "normal");
