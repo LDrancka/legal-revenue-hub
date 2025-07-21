@@ -456,7 +456,7 @@ export default function Lancamentos() {
       if (editingTransaction) {
         const { error } = await supabase
           .from('transactions')
-          .update(transactionData)
+          .update(transactionData as any)
           .eq('id', editingTransaction.id);
 
         if (error) {
@@ -2156,7 +2156,7 @@ export default function Lancamentos() {
                 <SelectContent>
                   <SelectItem value="todos">Todos status</SelectItem>
                   <SelectItem value="pendente">Pendentes</SelectItem>
-                  <SelectItem value="pago">Pagos/Recebidos</SelectItem>
+                  <SelectItem value="quitado">Quitados</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -2263,10 +2263,10 @@ export default function Lancamentos() {
                         {/* Tipo */}
                         <div className="col-span-1 text-center">
                           <Badge 
-                            variant={transaction.type === 'receita' ? 'default' : 'secondary'}
+                            variant={transaction.type === 'receita' ? 'default' : 'destructive'}
                             className={transaction.type === 'receita' 
                               ? 'bg-green-100 text-green-700 hover:bg-green-100 text-xs' 
-                              : 'text-xs'
+                              : 'bg-red-100 text-red-700 hover:bg-red-100 text-xs'
                             }
                           >
                             {transaction.type === 'receita' ? 'Receita' : 'Despesa'}

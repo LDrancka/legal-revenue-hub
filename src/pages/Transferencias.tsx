@@ -147,13 +147,13 @@ export default function Transferencias() {
           description: `Transferência: ${formData.description}`,
           amount: amount,
           type: 'despesa', // Saída da conta origem
-          status: 'pago',
+          status: 'quitado',
           due_date: new Date().toISOString().split('T')[0],
           payment_date: new Date().toISOString().split('T')[0],
           account_id: formData.to_account_id, // Conta destino
           payment_account_id: formData.from_account_id, // Conta origem
           observations: 'Transferência entre contas'
-        }]);
+        }] as any);
 
       if (error) throw error;
 

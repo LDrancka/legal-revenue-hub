@@ -146,7 +146,7 @@ const Dashboard = () => {
       transactions?.forEach(transaction => {
         const dueDate = new Date(transaction.due_date);
         const amount = Number(transaction.amount);
-        const isPaid = transaction.status === 'pago';
+        const isPaid = transaction.status === 'quitado';
         const isReceivable = transaction.type === 'receita';
         const isPayable = transaction.type === 'despesa';
 
@@ -213,14 +213,14 @@ const Dashboard = () => {
       }
 
       // 2. Distribuição por status
-      const statusCounts = { pendente: 0, pago: 0, vencido: 0 };
+      const statusCounts = { pendente: 0, quitado: 0, vencido: 0 };
       transactions?.forEach(transaction => {
         statusCounts[transaction.status as keyof typeof statusCounts]++;
       });
 
       const statusDistribution = [
         { name: 'Pendente', value: statusCounts.pendente, color: '#f59e0b' },
-        { name: 'Pago', value: statusCounts.pago, color: '#10b981' },
+        { name: 'Quitado', value: statusCounts.quitado, color: '#0ea5e9' },
         { name: 'Vencido', value: statusCounts.vencido, color: '#ef4444' }
       ].filter(item => item.value > 0);
 

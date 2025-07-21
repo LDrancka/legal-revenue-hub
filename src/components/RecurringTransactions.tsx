@@ -21,7 +21,7 @@ interface RecurringTransaction {
   recurrence_end_date?: string;
   due_date: string;
   user_id: string;
-  status: "pendente" | "pago";
+  status: "pendente" | "quitado";
 }
 
 export default function RecurringTransactions() {

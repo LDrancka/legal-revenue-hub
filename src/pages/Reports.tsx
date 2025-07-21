@@ -61,7 +61,7 @@ export default function Reports() {
       }
 
       if (filters.status !== 'all') {
-        query = query.eq('status', filters.status as 'pendente' | 'pago');
+        query = query.eq('status', filters.status as 'pendente' | 'quitado');
       }
 
       const { data, error } = await query.order('due_date', { ascending: false });
@@ -244,7 +244,7 @@ export default function Reports() {
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="pendente">Pendente</SelectItem>
-                  <SelectItem value="pago">Pago</SelectItem>
+                  <SelectItem value="quitado">Quitado</SelectItem>
                 </SelectContent>
               </Select>
             </div>

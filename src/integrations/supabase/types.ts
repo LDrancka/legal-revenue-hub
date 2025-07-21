@@ -460,7 +460,7 @@ export type Database = {
         | "trimestral"
         | "semestral"
         | "anual"
-      transaction_status: "pendente" | "pago"
+      transaction_status: "pendente" | "quitado"
       transaction_type: "receita" | "despesa"
     }
     CompositeTypes: {
@@ -598,7 +598,7 @@ export const Constants = {
         "semestral",
         "anual",
       ],
-      transaction_status: ["pendente", "pago"],
+      transaction_status: ["pendente", "quitado"],
       transaction_type: ["receita", "despesa"],
     },
   },
