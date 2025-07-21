@@ -29,7 +29,8 @@ import {
   MoreVertical,
   DollarSign,
   AlertTriangle,
-  Receipt
+  Receipt,
+  Tag
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -37,6 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import RecurringTransactions from "@/components/RecurringTransactions";
+import { CategoriesDialog } from "@/components/CategoriesDialog";
 
 interface Transaction {
   id: string;
@@ -72,6 +74,19 @@ interface Case {
   status: string;
 }
 
+interface Client {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+}
+
+interface Category {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export default function Lancamentos() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -79,7 +94,10 @@ export default function Lancamentos() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [cases, setCases] = useState<Case[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isCategoriesDialogOpen, setIsCategoriesDialogOpen] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedTipo, setSelectedTipo] = useState<string>("todos");
@@ -117,6 +135,9 @@ export default function Lancamentos() {
     amount: "",
     account_id: "",
     case_id: "",
+    client_id: "",
+    category_id: "",
+    status: "pendente" as "pendente" | "pago" | "atrasado",
     due_date: new Date(),
     is_recurring: false,
     recurrence_frequency: "" as "mensal" | "bimestral" | "trimestral" | "semestral" | "anual" | "",
@@ -139,7 +160,9 @@ export default function Lancamentos() {
       await Promise.all([
         fetchTransactions(),
         fetchAccounts(),
-        fetchCases()
+        fetchCases(),
+        fetchClients(),
+        fetchCategories()
       ]);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -194,6 +217,34 @@ export default function Lancamentos() {
     }
 
     setCases(data || []);
+  };
+
+  const fetchClients = async () => {
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('user_id', user?.id);
+
+    if (error) {
+      console.error('Erro ao buscar contatos:', error);
+      return;
+    }
+
+    setClients(data || []);
+  };
+
+  const fetchCategories = async () => {
+    const { data, error } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('user_id', user?.id);
+
+    if (error) {
+      console.error('Erro ao buscar categorias:', error);
+      return;
+    }
+
+    setCategories(data || []);
   };
 
   const filteredTransactions = transactions.filter((transaction) => {
@@ -432,6 +483,9 @@ export default function Lancamentos() {
       amount: transaction.amount.toString(),
       account_id: transaction.account_id || "",
       case_id: transaction.case_id || "",
+      client_id: "", // TODO: buscar do banco quando implementado
+      category_id: "", // TODO: buscar do banco quando implementado
+      status: transaction.status,
       due_date: new Date(transaction.due_date),
       is_recurring: transaction.is_recurring,
       recurrence_frequency: transaction.recurrence_frequency || "",
@@ -634,6 +688,9 @@ export default function Lancamentos() {
       amount: "",
       account_id: "",
       case_id: "",
+      client_id: "",
+      category_id: "",
+      status: "pendente",
       due_date: new Date(),
       is_recurring: false,
       recurrence_frequency: "",
@@ -824,20 +881,17 @@ export default function Lancamentos() {
               </DialogHeader>
               
               <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="description">Descrição *</Label>
+                  <Input
+                    id="description"
+                    placeholder="Ex: Pagamento de honorários"
+                    value={formData.description}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="type">Tipo *</Label>
-                    <Select value={formData.type} onValueChange={(value: "receita" | "despesa") => setFormData({...formData, type: value})}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o tipo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="receita">Receita</SelectItem>
-                        <SelectItem value="despesa">Despesa</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
                   <div className="space-y-2">
                     <Label htmlFor="amount">Valor *</Label>
                     <Input
@@ -849,28 +903,84 @@ export default function Lancamentos() {
                       onChange={(e) => setFormData({...formData, amount: e.target.value})}
                     />
                   </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="type">Tipo *</Label>
+                    <Select value={formData.type} onValueChange={(value: "receita" | "despesa") => setFormData({...formData, type: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Receita" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="receita">Receita</SelectItem>
+                        <SelectItem value="despesa">Despesa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="description">Descrição *</Label>
-                  <Input
-                    id="description"
-                    placeholder="Descrição do lançamento"
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  />
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="status">Status *</Label>
+                    <Select value={formData.status} onValueChange={(value: "pendente" | "pago" | "atrasado") => setFormData({...formData, status: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pendente" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pendente">Pendente</SelectItem>
+                        <SelectItem value="pago">Pago</SelectItem>
+                        <SelectItem value="atrasado">Atrasado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label>Data de Vencimento *</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start text-left font-normal"
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {formData.due_date ? format(formData.due_date, "dd/MM/yyyy", { locale: ptBR }) : "dd/mm/aaaa"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={formData.due_date}
+                          onSelect={(date) => date && setFormData({...formData, due_date: date})}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="client">Contato</Label>
+                    <Select value={formData.client_id} onValueChange={(value) => setFormData({...formData, client_id: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um contato" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {clients.map((client) => (
+                          <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="account">Conta *</Label>
+                    <Label htmlFor="account">Conta</Label>
                     <Select 
                       value={formData.account_id} 
                       onValueChange={(value) => setFormData({...formData, account_id: value})}
                       disabled={formData.temRateio}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione a conta" />
+                        <SelectValue placeholder="Selecione uma conta" />
                       </SelectTrigger>
                       <SelectContent>
                         {accounts.map((account) => (
@@ -881,10 +991,10 @@ export default function Lancamentos() {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="case">Caso/Centro de Custo</Label>
+                    <Label htmlFor="case">Caso/Processo</Label>
                     <Select value={formData.case_id} onValueChange={(value) => setFormData({...formData, case_id: value})}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione o caso" />
+                        <SelectValue placeholder="Selecione um caso" />
                       </SelectTrigger>
                       <SelectContent>
                         {cases.map((case_) => (
@@ -893,6 +1003,40 @@ export default function Lancamentos() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="category">Categoria</Label>
+                    <CategoriesDialog onCategoryChange={fetchCategories} />
+                  </div>
+                  <Select value={formData.category_id} onValueChange={(value) => setFormData({...formData, category_id: value})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          <div className="flex items-center gap-2">
+                            <div 
+                              className="w-3 h-3 rounded-full" 
+                              style={{ backgroundColor: category.color }}
+                            />
+                            {category.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="recurring"
+                    checked={formData.is_recurring}
+                    onCheckedChange={(checked) => setFormData({...formData, is_recurring: checked as boolean})}
+                  />
+                  <Label htmlFor="recurring" className="text-sm">🔄 Transação Recorrente</Label>
                 </div>
 
                 {/* Opção de Rateio */}
