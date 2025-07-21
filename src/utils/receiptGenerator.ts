@@ -241,7 +241,7 @@ export function generateReceipt(data: ReceiptData): void {
     const quitacaoLines = doc.splitTextToSize(quitacaoTexto, quitacaoWidth);
     
     // Verificar se há espaço suficiente
-    const spaceNeeded = quitacaoLines.length * 5 + 40; // linhas + espaço para assinatura
+    const spaceNeeded = quitacaoLines.length * 5 + 50; // linhas + espaço para assinatura
     if (currentY + spaceNeeded > maxYLimit) {
       doc.setFontSize(8);
       const compactLines = doc.splitTextToSize(quitacaoTexto, quitacaoWidth);
@@ -257,11 +257,11 @@ export function generateReceipt(data: ReceiptData): void {
     }
     
     doc.setFontSize(10);
-    currentY += 25; // Aumentado de 15 para 25 para dar mais espaço
+    currentY += 20; // Espaço após texto de quitação
     
-    // Verificar espaço para cidade/data
-    if (currentY + 25 > maxYLimit) {
-      currentY = maxYLimit - 25;
+    // Verificar se há espaço suficiente para cidade/data + assinatura (total ~35px)
+    if (currentY + 35 > maxYLimit) {
+      currentY = maxYLimit - 35;
     }
     
     // Cidade e data alinhados à direita
@@ -273,12 +273,7 @@ export function generateReceipt(data: ReceiptData): void {
     doc.setFontSize(10);
     doc.text(cidadeData, pageWidth - margin, currentY, { align: 'right' });
     
-    currentY += 12;
-    
-    // Verificar espaço para assinatura
-    if (currentY + 45 > maxYForVia(startY)) {
-      currentY = maxYForVia(startY) - 45;
-    }
+    currentY += 15; // Espaço entre cidade/data e linha de assinatura
     
     // Linha para assinatura
     const lineY = currentY;
