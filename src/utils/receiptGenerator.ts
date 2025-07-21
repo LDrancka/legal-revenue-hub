@@ -148,16 +148,31 @@ export function generateReceipt(data: ReceiptData): void {
     
     currentY += 15;
     
-    // PRIMEIRO: Texto "Recebi(emos)"
+    // PRIMEIRO: Texto "Recebi(emos)" - diferente para receita e despesa
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     
-    const clientNameUpper = data.clientName?.toUpperCase() || "CLIENTE";
+    let pagadorNome, pagadorDoc, recebedorNome, recebedorDoc;
+    
+    if (data.type === 'receita') {
+      // Para receitas: cliente paga para o escritório
+      pagadorNome = data.clientName?.toUpperCase() || "CLIENTE";
+      pagadorDoc = data.clientCpf;
+      recebedorNome = data.officeOwnerName?.toUpperCase() || data.userDisplayName?.toUpperCase() || "ESCRITÓRIO";
+    } else {
+      // Para despesas: escritório paga para o cliente
+      pagadorNome = data.officeOwnerName?.toUpperCase() || data.userDisplayName?.toUpperCase() || "ESCRITÓRIO";
+      pagadorDoc = data.officeOwnerDocument;
+      recebedorNome = data.clientName?.toUpperCase() || "CLIENTE";
+      recebedorDoc = data.clientCpf;
+    }
+    
     const valorExtenso = numberToWords(data.amount);
     
-    let textoRecebi = `Recebi(emos) de ${clientNameUpper}`;
-    if (data.clientCpf) {
-      textoRecebi += `, CPF ${data.clientCpf}`;
+    let textoRecebi = `Recebi(emos) de ${pagadorNome}`;
+    if (pagadorDoc) {
+      const docLabel = data.type === 'despesa' && data.officeDocumentType === 'cnpj' ? 'CNPJ' : 'CPF';
+      textoRecebi += `, ${docLabel} ${pagadorDoc}`;
     }
     textoRecebi += `, a importância de ${valorExtenso}, referente à ${data.description}. Para maior clareza, firmo(amos) o presente recibo que comprova o recebimento integral do valor mencionado, concedendo quitação plena, geral e irrevogável pela quantia recebida`;
     
@@ -196,15 +211,15 @@ export function generateReceipt(data: ReceiptData): void {
         let currentX = margin;
         let remainingText = line;
         
-        // Nome do cliente em negrito
-        if (remainingText.includes(clientNameUpper)) {
-          const parts = remainingText.split(clientNameUpper);
+        // Nome do pagador em negrito
+        if (remainingText.includes(pagadorNome)) {
+          const parts = remainingText.split(pagadorNome);
           doc.text(parts[0], currentX, currentY);
           currentX += doc.getTextWidth(parts[0]);
           
           doc.setFont("helvetica", "bold");
-          doc.text(clientNameUpper, currentX, currentY);
-          currentX += doc.getTextWidth(clientNameUpper);
+          doc.text(pagadorNome, currentX, currentY);
+          currentX += doc.getTextWidth(pagadorNome);
           
           doc.setFont("helvetica", "normal");
           remainingText = parts[1] || '';
@@ -249,7 +264,7 @@ export function generateReceipt(data: ReceiptData): void {
         
         justified.words.forEach((word, wordIndex) => {
           // Verificar formatação em negrito para palavras específicas
-          if (word.includes(clientNameUpper) || word === clientNameUpper) {
+          if (word.includes(pagadorNome) || word === pagadorNome) {
             doc.setFont("helvetica", "bold");
             doc.text(word, currentX, currentY);
             doc.setFont("helvetica", "normal");
@@ -297,44 +312,59 @@ export function generateReceipt(data: ReceiptData): void {
     doc.line(margin + 30, lineY, pageWidth - margin - 30, lineY);
     currentY += 8;
     
-    // Nome do assinante e dados do escritório
-    if (data.officeOwnerName) {
-      // Se há dados do escritório, mostrar as informações do escritório
-      doc.setFontSize(8);
+    // Nome do assinante - depende do tipo de transação
+    if (data.type === 'receita') {
+      // Para receitas: assinatura do escritório (quem recebe)
+      if (data.officeOwnerName) {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+        
+        // Linha 1: Nome/Razão Social
+        doc.text(data.officeOwnerName.toUpperCase(), pageWidth / 2, currentY, { align: 'center' });
+        currentY += 6;
+        
+        // Linha 2: CPF/CNPJ
+        if (data.officeOwnerDocument) {
+          const documentLabel = data.officeDocumentType === 'cpf' ? 'CPF' : 'CNPJ';
+          doc.text(`${documentLabel}: ${data.officeOwnerDocument}`, pageWidth / 2, currentY, { align: 'center' });
+          currentY += 5; // Espaço reduzido
+        }
+        
+        // Linha 3: "Por:" e nome do usuário
+        doc.setFont("helvetica", "normal");
+        const porTexto = "Por: ";
+        const userSignature = data.userDisplayName || 'Usuário';
+        
+        const porWidth = doc.getTextWidth(porTexto);
+        const totalWidth = porWidth + doc.getTextWidth(userSignature);
+        const startX = (pageWidth - totalWidth) / 2;
+        
+        doc.text(porTexto, startX, currentY);
+        doc.setFont("helvetica", "bold");
+        doc.text(userSignature, startX + porWidth, currentY);
+      } else {
+        // Formato original quando não há dados do escritório
+        const signataryName = data.userDisplayName || 'Assinatura';
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.text(signataryName, pageWidth / 2, currentY, { align: 'center' });
+      }
+    } else {
+      // Para despesas: assinatura do cliente (quem recebe)
+      doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       
-      // Linha 1: Nome/Razão Social
-      doc.text(data.officeOwnerName.toUpperCase(), pageWidth / 2, currentY, { align: 'center' });
+      // Nome do cliente
+      const clientName = data.clientName?.toUpperCase() || 'CLIENTE';
+      doc.text(clientName, pageWidth / 2, currentY, { align: 'center' });
       currentY += 6;
       
-      // Linha 2: CPF/CNPJ
-      if (data.officeOwnerDocument) {
-        const documentLabel = data.officeDocumentType === 'cpf' ? 'CPF' : 'CNPJ';
-        doc.text(`${documentLabel}: ${data.officeOwnerDocument}`, pageWidth / 2, currentY, { align: 'center' });
-        currentY += 5; // Espaço reduzido
+      // CPF do cliente se disponível
+      if (recebedorDoc) {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.text(`CPF: ${recebedorDoc}`, pageWidth / 2, currentY, { align: 'center' });
       }
-      
-      // Linha 3: "Por:" e nome do usuário
-      doc.setFont("helvetica", "normal");
-      const porTexto = "Por: ";
-      const userSignature = data.userDisplayName || 'Usuário';
-      
-      const porWidth = doc.getTextWidth(porTexto);
-      const totalWidth = porWidth + doc.getTextWidth(userSignature);
-      const startX = (pageWidth - totalWidth) / 2;
-      
-      doc.text(porTexto, startX, currentY);
-      doc.setFont("helvetica", "bold");
-      doc.text(userSignature, startX + porWidth, currentY);
-    } else {
-      // Formato original quando não há dados do escritório
-      const signataryName = data.type === 'receita' 
-        ? (data.userDisplayName || 'Assinatura') 
-        : (data.clientName || 'Assinatura');
-      
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      doc.text(signataryName, pageWidth / 2, currentY, { align: 'center' });
     }
   };
   
