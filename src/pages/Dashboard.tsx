@@ -128,10 +128,17 @@ const Dashboard = () => {
 
       if (accountsResult.error) {
         console.error('Erro ao buscar contas:', accountsResult.error);
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: "Erro ao carregar contas do dashboard"
+        });
       }
 
       const transactions = transactionsResult.data || [];
       const accounts = accountsResult.data || [];
+      
+      console.log('Contas encontradas no dashboard:', accounts);
 
       // Calcular dados do dashboard
       const data: DashboardData = {
@@ -240,6 +247,8 @@ const Dashboard = () => {
         name: account.name,
         balance: Number(account.balance)
       }));
+      
+      console.log('Dados do gráfico de saldo:', accountsBalance);
 
       data.chartData = {
         monthlyFlow,
@@ -511,15 +520,15 @@ const Dashboard = () => {
           </Card>
 
           {/* Saldo das Contas */}
-          {dashboardData.chartData.accountsBalance.length > 0 && (
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5" />
-                  Saldo por Conta
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                Saldo por Conta
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {dashboardData.chartData.accountsBalance.length > 0 ? (
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart 
                     data={dashboardData.chartData.accountsBalance}
@@ -549,9 +558,26 @@ const Dashboard = () => {
                     <Bar dataKey="balance" fill="#3b82f6" />
                   </BarChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+                  <DollarSign className="h-12 w-12 mb-4 opacity-50" />
+                  <p className="text-center mb-2">Nenhuma conta encontrada</p>
+                  <p className="text-sm text-center">
+                    Cadastre suas contas para visualizar o saldo
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-4"
+                    onClick={handleNewAccount}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Criar Conta
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Quick Actions */}
