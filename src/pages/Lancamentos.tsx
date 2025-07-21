@@ -1098,9 +1098,10 @@ export default function Lancamentos() {
         accountData,
         pixKey,
         beneficiaryName,
-        officeOwnerName: officeData?.owner_name,
-        officeOwnerDocument: officeData?.owner_document,
-        officeDocumentType: officeData?.document_type as 'cpf' | 'cnpj'
+          officeOwnerName: officeData?.owner_name,
+          officeOwnerDocument: officeData?.owner_document,
+          officeDocumentType: officeData?.document_type as 'cpf' | 'cnpj',
+          officeCity: officeData?.city
       });
     }
 
@@ -1352,9 +1353,10 @@ export default function Lancamentos() {
         accountData: partialAccountData,
         pixKey: partialPixKey,
         beneficiaryName: partialBeneficiaryName,
-        officeOwnerName: officeData?.owner_name,
-        officeOwnerDocument: officeData?.owner_document,
-        officeDocumentType: officeData?.document_type as 'cpf' | 'cnpj'
+          officeOwnerName: officeData?.owner_name,
+          officeOwnerDocument: officeData?.owner_document,
+          officeDocumentType: officeData?.document_type as 'cpf' | 'cnpj',
+          officeCity: officeData?.city
       });
     }
 

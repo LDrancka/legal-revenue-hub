@@ -22,6 +22,7 @@ interface ReceiptData {
   officeOwnerName?: string;
   officeOwnerDocument?: string;
   officeDocumentType?: 'cpf' | 'cnpj';
+  officeCity?: string;
 }
 
 // Função para converter número em extenso
@@ -159,13 +160,13 @@ export function generateReceipt(data: ReceiptData): void {
     }
     
     // Continuação do texto
-    const continuacao = `, a importância de `;
-    doc.text(continuacao, margin + textWidth, currentY);
-    textWidth += doc.getTextWidth(continuacao);
+    const continuacaoTexto = `, a importância de `;
+    doc.text(continuacaoTexto, margin + textWidth, currentY);
+    textWidth += doc.getTextWidth(continuacaoTexto);
     
     // Verificar se o valor por extenso cabe na mesma linha
-    const maxWidth = pageWidth - margin - 10;
-    if (textWidth + doc.getTextWidth(valorExtenso) <= maxWidth) {
+    const maxWidthLine = pageWidth - margin - 10;
+    if (textWidth + doc.getTextWidth(valorExtenso) <= maxWidthLine) {
       // Valor por extenso em negrito na mesma linha
       doc.setFont("helvetica", "bold");
       doc.text(valorExtenso, margin + textWidth, currentY);
@@ -174,12 +175,12 @@ export function generateReceipt(data: ReceiptData): void {
       // Finalização
       doc.setFont("helvetica", "normal");
       const finalizacao = `, referente à `;
-      if (textWidth + doc.getTextWidth(finalizacao) <= maxWidth) {
+      if (textWidth + doc.getTextWidth(finalizacao) <= maxWidthLine) {
         doc.text(finalizacao, margin + textWidth, currentY);
         textWidth += doc.getTextWidth(finalizacao);
         
         // Descrição em negrito
-        if (textWidth + doc.getTextWidth(data.description) <= maxWidth) {
+        if (textWidth + doc.getTextWidth(data.description) <= maxWidthLine) {
           doc.setFont("helvetica", "bold");
           doc.text(data.description, margin + textWidth, currentY);
           textWidth += doc.getTextWidth(data.description);
@@ -219,11 +220,11 @@ export function generateReceipt(data: ReceiptData): void {
       doc.setFont("helvetica", "normal");
       const finalizacao = `, referente à `;
       
-      if (valorWidth + doc.getTextWidth(finalizacao) <= maxWidth) {
+      if (valorWidth + doc.getTextWidth(finalizacao) <= maxWidthLine) {
         doc.text(finalizacao, margin + valorWidth, currentY);
         const refWidth = doc.getTextWidth(finalizacao);
         
-        if (valorWidth + refWidth + doc.getTextWidth(data.description) <= maxWidth) {
+        if (valorWidth + refWidth + doc.getTextWidth(data.description) <= maxWidthLine) {
           doc.setFont("helvetica", "bold");
           doc.text(data.description, margin + valorWidth + refWidth, currentY);
           
@@ -257,50 +258,69 @@ export function generateReceipt(data: ReceiptData): void {
     
     currentY += 15;
     
-    // Parágrafo sobre quitação
+    // Parágrafo sobre quitação em uma linha só
     doc.setFont("helvetica", "normal");
-    const quitacaoTexto1 = "Para maior clareza, firmo(amos) o presente recibo que comprova o recebimento integral do valor mencionado, concedendo ";
-    const quitacao1Lines = doc.splitTextToSize(quitacaoTexto1, pageWidth - 2 * margin);
-    doc.text(quitacao1Lines, margin, currentY);
+    const quitacaoCompleto = "Para maior clareza, firmo(amos) o presente recibo que comprova o recebimento integral do valor mencionado, concedendo ";
+    doc.text(quitacaoCompleto, margin, currentY);
     
-    currentY += quitacao1Lines.length * 6;
-    
+    const quitacaoCompletoWidth = doc.getTextWidth(quitacaoCompleto);
     doc.setFont("helvetica", "bold");
-    doc.text("quitação plena, geral e irrevogável", margin, currentY);
+    doc.text("quitação plena, geral e irrevogável", margin + quitacaoCompletoWidth, currentY);
     
     const quitacaoWidth = doc.getTextWidth("quitação plena, geral e irrevogável");
     doc.setFont("helvetica", "normal");
-    doc.text(" pela quantia recebida.", margin + quitacaoWidth, currentY);
+    
+    // Continuação na mesma linha ou próxima linha dependendo do espaço
+    const continuacao = " pela quantia recebida";
+    const maxWidth = pageWidth - margin - 10;
+    
+    if (quitacaoCompletoWidth + quitacaoWidth + doc.getTextWidth(continuacao) <= maxWidth) {
+      doc.text(continuacao, margin + quitacaoCompletoWidth + quitacaoWidth, currentY);
+    } else {
+      currentY += 7;
+      doc.text(continuacao, margin, currentY);
+    }
+    
+    // Dados da forma de pagamento (se não for dinheiro) - na mesma linha após "quantia recebida"
+    if (data.paymentMethod && data.paymentMethod !== 'Dinheiro') {
+      doc.setFontSize(8);
+      
+      let paymentInfo = `, via ${data.paymentMethod}`;
+      
+      if (data.accountData && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
+        paymentInfo += ` (${data.accountData}`;
+        
+        if (data.pixKey && data.paymentMethod === 'PIX') {
+          paymentInfo += ` - Chave PIX: ${data.pixKey}`;
+        }
+        
+        if (data.beneficiaryName && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
+          paymentInfo += ` - ${data.beneficiaryName}`;
+        }
+        
+        paymentInfo += ')';
+      }
+      
+      paymentInfo += '.';
+      
+      // Verificar se cabe na mesma linha
+      const continuacaoWidth = doc.getTextWidth(continuacao);
+      if (quitacaoCompletoWidth + quitacaoWidth + continuacaoWidth + doc.getTextWidth(paymentInfo) <= maxWidth) {
+        doc.text(paymentInfo, margin + quitacaoCompletoWidth + quitacaoWidth + continuacaoWidth, currentY);
+      } else {
+        currentY += 7;
+        doc.text(paymentInfo, margin, currentY);
+      }
+      
+      doc.setFontSize(10); // Voltar ao tamanho normal
+    } else {
+      doc.text(".", margin + quitacaoCompletoWidth + quitacaoWidth + doc.getTextWidth(continuacao), currentY);
+    }
     
     currentY += 15;
     
-    // Dados da forma de pagamento (se não for dinheiro) - em fonte menor
-    if (data.paymentMethod && data.paymentMethod !== 'Dinheiro') {
-      doc.setFontSize(8);
-      doc.text(`Forma de Pagamento: ${data.paymentMethod}`, margin, currentY);
-      currentY += 5;
-      
-      if (data.accountData && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
-        doc.text(`Dados da Conta: ${data.accountData}`, margin, currentY);
-        currentY += 5;
-      }
-      
-      if (data.pixKey && data.paymentMethod === 'PIX') {
-        doc.text(`Chave PIX: ${data.pixKey}`, margin, currentY);
-        currentY += 5;
-      }
-      
-      if (data.beneficiaryName && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
-        doc.text(`Beneficiário: ${data.beneficiaryName}`, margin, currentY);
-        currentY += 5;
-      }
-      
-      currentY += 8;
-      doc.setFontSize(10); // Voltar ao tamanho normal
-    }
-    
     // Cidade e data alinhados à direita
-    const cidade = "São Paulo"; // Você pode adicionar a cidade como parâmetro se necessário
+    const cidade = data.officeCity || "São Paulo";
     const dataFormatada = new Date(data.paymentDate).toLocaleDateString('pt-BR');
     const cidadeData = `${cidade}, ${dataFormatada}`;
     

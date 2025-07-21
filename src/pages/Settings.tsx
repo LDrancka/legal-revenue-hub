@@ -26,6 +26,7 @@ interface OfficeSettings {
   owner_name: string | null;
   owner_document: string | null;
   document_type: 'cpf' | 'cnpj' | null;
+  city: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -52,7 +53,8 @@ const Settings = () => {
   const [officeData, setOfficeData] = useState({
     ownerName: "",
     ownerDocument: "",
-    documentType: "cpf" as "cpf" | "cnpj"
+    documentType: "cpf" as "cpf" | "cnpj",
+    city: ""
   });
 
   // Buscar perfil do usuário
@@ -105,7 +107,8 @@ const Settings = () => {
         setOfficeData({
           ownerName: data.owner_name || "",
           ownerDocument: data.owner_document || "",
-          documentType: (data.document_type as "cpf" | "cnpj") || "cpf"
+          documentType: (data.document_type as "cpf" | "cnpj") || "cpf",
+          city: data.city || ""
         });
       }
     } catch (error) {
@@ -168,6 +171,7 @@ const Settings = () => {
             owner_name: officeData.ownerName || null,
             owner_document: officeData.ownerDocument || null,
             document_type: officeData.documentType,
+            city: officeData.city || null,
           })
           .eq('user_id', user?.id);
 
@@ -181,6 +185,7 @@ const Settings = () => {
             owner_name: officeData.ownerName || null,
             owner_document: officeData.ownerDocument || null,
             document_type: officeData.documentType,
+            city: officeData.city || null,
           });
 
         if (error) throw error;
@@ -489,17 +494,26 @@ const Settings = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ownerDocument">
-                    {officeData.documentType === 'cpf' ? 'CPF' : 'CNPJ'}
-                  </Label>
-                  <Input
-                    id="ownerDocument"
-                    value={officeData.ownerDocument}
-                    onChange={(e) => setOfficeData({ ...officeData, ownerDocument: e.target.value })}
-                    placeholder={officeData.documentType === 'cpf' ? 'XXX.XXX.XXX-XX' : 'XX.XXX.XXX/XXXX-XX'}
-                  />
-                </div>
+                 <div className="space-y-2">
+                   <Label htmlFor="ownerDocument">
+                     {officeData.documentType === 'cpf' ? 'CPF' : 'CNPJ'}
+                   </Label>
+                   <Input
+                     id="ownerDocument"
+                     value={officeData.ownerDocument}
+                     onChange={(e) => setOfficeData({ ...officeData, ownerDocument: e.target.value })}
+                     placeholder={officeData.documentType === 'cpf' ? 'XXX.XXX.XXX-XX' : 'XX.XXX.XXX/XXXX-XX'}
+                   />
+                 </div>
+                 <div className="space-y-2">
+                   <Label htmlFor="city">Cidade</Label>
+                   <Input
+                     id="city"
+                     value={officeData.city}
+                     onChange={(e) => setOfficeData({ ...officeData, city: e.target.value })}
+                     placeholder="Digite a cidade do escritório"
+                   />
+                 </div>
                 <Button type="submit" disabled={isLoading} className="flex items-center gap-2">
                   <Save className="h-4 w-4" />
                   {isLoading ? "Salvando..." : "Salvar Dados do Escritório"}
