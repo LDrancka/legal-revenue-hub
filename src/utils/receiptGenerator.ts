@@ -142,182 +142,147 @@ export function generateReceipt(data: ReceiptData): void {
     const valorExtenso = numberToWords(data.amount);
     
     // Texto base
-    let textoCompleto = `Recebi(emos) de `;
-    doc.text(textoCompleto, margin, currentY);
+    let textoCompleto = `Recebi(emos) de ${clientNameUpper}`;
     
-    // Nome do cliente em negrito
-    let textWidth = doc.getTextWidth(textoCompleto);
-    doc.setFont("helvetica", "bold");
-    doc.text(clientNameUpper, margin + textWidth, currentY);
-    
-    // CPF se existir e vírgula
-    textWidth += doc.getTextWidth(clientNameUpper);
-    doc.setFont("helvetica", "normal");
-    let cpfText = "";
+    // CPF se existir
     if (data.clientCpf) {
-      cpfText = `, CPF ${data.clientCpf}`;
-      doc.text(cpfText, margin + textWidth, currentY);
-      textWidth += doc.getTextWidth(cpfText);
+      textoCompleto += `, CPF ${data.clientCpf}`;
     }
     
-    // Continuação do texto
-    const continuacaoTexto = `, a importância de `;
-    doc.text(continuacaoTexto, margin + textWidth, currentY);
-    textWidth += doc.getTextWidth(continuacaoTexto);
+    textoCompleto += `, a importância de ${valorExtenso}, referente à ${data.description}.`;
     
-    // Verificar se o valor por extenso cabe na mesma linha
-    const maxWidthLine = pageWidth - margin - 10;
-    if (textWidth + doc.getTextWidth(valorExtenso) <= maxWidthLine) {
-      // Valor por extenso em negrito na mesma linha
-      doc.setFont("helvetica", "bold");
-      doc.text(valorExtenso, margin + textWidth, currentY);
-      textWidth += doc.getTextWidth(valorExtenso);
-      
-      // Finalização
-      doc.setFont("helvetica", "normal");
-      const finalizacao = `, referente à `;
-      if (textWidth + doc.getTextWidth(finalizacao) <= maxWidthLine) {
-        doc.text(finalizacao, margin + textWidth, currentY);
-        textWidth += doc.getTextWidth(finalizacao);
+    // Quebrar o texto para caber na largura disponível
+    const textAvailableWidth = pageWidth - 2 * margin;
+    const lines = doc.splitTextToSize(textoCompleto, textAvailableWidth);
+    
+    // Renderizar cada linha
+    lines.forEach((line: string, index: number) => {
+      // Verificar se a linha contém partes que devem ser em negrito
+      if (line.includes(clientNameUpper) || line.includes(valorExtenso) || line.includes(data.description)) {
+        // Processar linha com formatação mista
+        let remainingText = line;
+        let currentX = margin;
         
-        // Descrição em negrito
-        if (textWidth + doc.getTextWidth(data.description) <= maxWidthLine) {
-          doc.setFont("helvetica", "bold");
-          doc.text(data.description, margin + textWidth, currentY);
-          textWidth += doc.getTextWidth(data.description);
-          
+        // Verificar se contém nome do cliente
+        if (remainingText.includes(clientNameUpper)) {
+          const parts = remainingText.split(clientNameUpper);
           doc.setFont("helvetica", "normal");
-          doc.text(".", margin + textWidth, currentY);
-        } else {
-          // Descrição na próxima linha
-          currentY += 7;
-          doc.setFont("helvetica", "bold");
-          doc.text(data.description, margin, currentY);
+          doc.text(parts[0], currentX, currentY);
+          currentX += doc.getTextWidth(parts[0]);
           
-          const descWidth = doc.getTextWidth(data.description);
+          doc.setFont("helvetica", "bold");
+          doc.text(clientNameUpper, currentX, currentY);
+          currentX += doc.getTextWidth(clientNameUpper);
+          
+          remainingText = parts[1] || '';
+        }
+        
+        // Verificar se contém valor por extenso
+        if (remainingText.includes(valorExtenso)) {
+          const parts = remainingText.split(valorExtenso);
           doc.setFont("helvetica", "normal");
-          doc.text(".", margin + descWidth, currentY);
+          doc.text(parts[0], currentX, currentY);
+          currentX += doc.getTextWidth(parts[0]);
+          
+          doc.setFont("helvetica", "bold");
+          doc.text(valorExtenso, currentX, currentY);
+          currentX += doc.getTextWidth(valorExtenso);
+          
+          remainingText = parts[1] || '';
+        }
+        
+        // Verificar se contém descrição
+        if (remainingText.includes(data.description)) {
+          const parts = remainingText.split(data.description);
+          doc.setFont("helvetica", "normal");
+          doc.text(parts[0], currentX, currentY);
+          currentX += doc.getTextWidth(parts[0]);
+          
+          doc.setFont("helvetica", "bold");
+          doc.text(data.description, currentX, currentY);
+          currentX += doc.getTextWidth(data.description);
+          
+          remainingText = parts[1] || '';
+        }
+        
+        // Resto do texto
+        if (remainingText) {
+          doc.setFont("helvetica", "normal");
+          doc.text(remainingText, currentX, currentY);
         }
       } else {
-        // Referente à na próxima linha
-        currentY += 7;
-        doc.text(finalizacao, margin, currentY);
-        const refWidth = doc.getTextWidth(finalizacao);
-        
-        doc.setFont("helvetica", "bold");
-        doc.text(data.description, margin + refWidth, currentY);
-        
-        const descWidth = doc.getTextWidth(data.description);
+        // Linha normal sem formatação especial
         doc.setFont("helvetica", "normal");
-        doc.text(".", margin + refWidth + descWidth, currentY);
+        doc.text(line, margin, currentY);
       }
-    } else {
-      // Valor por extenso na próxima linha
-      currentY += 7;
-      doc.setFont("helvetica", "bold");
-      doc.text(valorExtenso, margin, currentY);
       
-      const valorWidth = doc.getTextWidth(valorExtenso);
-      doc.setFont("helvetica", "normal");
-      const finalizacao = `, referente à `;
-      
-      if (valorWidth + doc.getTextWidth(finalizacao) <= maxWidthLine) {
-        doc.text(finalizacao, margin + valorWidth, currentY);
-        const refWidth = doc.getTextWidth(finalizacao);
-        
-        if (valorWidth + refWidth + doc.getTextWidth(data.description) <= maxWidthLine) {
-          doc.setFont("helvetica", "bold");
-          doc.text(data.description, margin + valorWidth + refWidth, currentY);
-          
-          const descWidth = doc.getTextWidth(data.description);
-          doc.setFont("helvetica", "normal");
-          doc.text(".", margin + valorWidth + refWidth + descWidth, currentY);
-        } else {
-          // Descrição na próxima linha
-          currentY += 7;
-          doc.setFont("helvetica", "bold");
-          doc.text(data.description, margin, currentY);
-          
-          const descWidth = doc.getTextWidth(data.description);
-          doc.setFont("helvetica", "normal");
-          doc.text(".", margin + descWidth, currentY);
-        }
-      } else {
-        // Referente à na próxima linha
-        currentY += 7;
-        doc.text(finalizacao, margin, currentY);
-        const refWidth = doc.getTextWidth(finalizacao);
-        
-        doc.setFont("helvetica", "bold");
-        doc.text(data.description, margin + refWidth, currentY);
-        
-        const descWidth = doc.getTextWidth(data.description);
-        doc.setFont("helvetica", "normal");
-        doc.text(".", margin + refWidth + descWidth, currentY);
-      }
-    }
+      currentY += 7; // Espaçamento entre linhas
+    });
     
-    currentY += 15;
+    currentY += 8; // Espaço extra após o texto principal
     // Verificar se há espaço suficiente para o parágrafo de quitação
     const maxYLimit = maxYForVia(startY);
-    if (currentY + 50 > maxYLimit) {
+    if (currentY + 60 > maxYLimit) {
       // Se não há espaço suficiente, usar menos espaço
-      currentY = maxYLimit - 50;
+      currentY = maxYLimit - 60;
     }
     
     // Parágrafo sobre quitação - usando quebra de linha inteligente
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9); // Reduzir fonte se necessário
+    doc.setFontSize(9);
     
-    const quitacaoTextoCompleto = "Para maior clareza, firmo(amos) o presente recibo que comprova o recebimento integral do valor mencionado, concedendo quitação plena, geral e irrevogável pela quantia recebida";
+    let quitacaoTextoCompleto = "Para maior clareza, firmo(amos) o presente recibo que comprova o recebimento integral do valor mencionado, concedendo quitação plena, geral e irrevogável pela quantia recebida";
     
     // Adicionar informações de pagamento se existirem
-    let textoComPagamento = quitacaoTextoCompleto;
     if (data.paymentMethod && data.paymentMethod !== 'Dinheiro') {
-      textoComPagamento += `, via ${data.paymentMethod}`;
+      quitacaoTextoCompleto += `, via ${data.paymentMethod}`;
       
       if (data.accountData && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
-        textoComPagamento += ` (${data.accountData}`;
+        quitacaoTextoCompleto += ` (${data.accountData}`;
         
         if (data.pixKey && data.paymentMethod === 'PIX') {
-          textoComPagamento += ` - Chave PIX: ${data.pixKey}`;
+          quitacaoTextoCompleto += ` - Chave PIX: ${data.pixKey}`;
         }
         
         if (data.beneficiaryName && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
-          textoComPagamento += ` - ${data.beneficiaryName}`;
+          quitacaoTextoCompleto += ` - ${data.beneficiaryName}`;
         }
         
-        textoComPagamento += ')';
+        quitacaoTextoCompleto += ')';
       }
     }
     
-    textoComPagamento += '.';
+    quitacaoTextoCompleto += '.';
     
     // Quebrar o texto para caber na largura disponível
-    const availableWidth = pageWidth - 2 * margin;
-    const lines = doc.splitTextToSize(textoComPagamento, availableWidth);
+    const quitacaoAvailableWidth = pageWidth - 2 * margin;
+    const quitacaoLines = doc.splitTextToSize(quitacaoTextoCompleto, quitacaoAvailableWidth);
     
     // Verificar se as linhas cabem no espaço disponível
-    const lineHeight = 6;
-    const totalTextHeight = lines.length * lineHeight;
+    const lineHeight = 5;
+    const totalTextHeight = quitacaoLines.length * lineHeight;
     
-    if (currentY + totalTextHeight > maxYLimit - 30) {
+    if (currentY + totalTextHeight > maxYLimit - 35) {
       // Ajustar fonte para caber
       doc.setFontSize(8);
-      const newLines = doc.splitTextToSize(textoComPagamento, availableWidth);
-      doc.text(newLines, margin, currentY);
-      currentY += newLines.length * 5;
+      const newLines = doc.splitTextToSize(quitacaoTextoCompleto, quitacaoAvailableWidth);
+      newLines.forEach((line: string, index: number) => {
+        doc.text(line, margin, currentY + (index * 4));
+      });
+      currentY += newLines.length * 4;
     } else {
-      doc.text(lines, margin, currentY);
+      quitacaoLines.forEach((line: string, index: number) => {
+        doc.text(line, margin, currentY + (index * lineHeight));
+      });
       currentY += totalTextHeight;
     }
     
     doc.setFontSize(10); // Voltar ao tamanho normal
-    currentY += 10;
+    currentY += 12;
     
     // Verificar espaço para cidade/data
-    if (currentY + 20 > maxYForVia(startY)) {
-      currentY = maxYForVia(startY) - 20;
+    if (currentY + 25 > maxYForVia(startY)) {
+      currentY = maxYForVia(startY) - 25;
     }
     
     // Cidade e data alinhados à direita
@@ -326,18 +291,21 @@ export function generateReceipt(data: ReceiptData): void {
     const cidadeData = `${cidade}, ${dataFormatada}`;
     
     doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
     doc.text(cidadeData, pageWidth - margin, currentY, { align: 'right' });
     
-    currentY += 10;
+    currentY += 12;
     
     // Verificar espaço para assinatura
-    if (currentY + 40 > maxYForVia(startY)) {
-      currentY = maxYForVia(startY) - 40;
+    if (currentY + 45 > maxYForVia(startY)) {
+      currentY = maxYForVia(startY) - 45;
     }
     
     // Linha para assinatura
-    doc.line(margin + 30, currentY, pageWidth - margin - 30, currentY);
-    currentY += 6;
+    const lineY = currentY;
+    doc.setLineWidth(0.5);
+    doc.line(margin + 30, lineY, pageWidth - margin - 30, lineY);
+    currentY += 8;
     
     // Nome do assinante e dados do escritório
     if (data.officeOwnerName) {
