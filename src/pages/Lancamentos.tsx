@@ -638,6 +638,8 @@ export default function Lancamentos() {
     paymentObservations: string | null = null,
     paymentAccountId: string | null = null
   ) => {
+    console.log('🔄 updateTransactionStatus chamada:', { id, status, paymentAccountId });
+    
     try {
       // Primeiro, buscar os dados da transação para saber se precisa atualizar o saldo
       const { data: transactionData, error: fetchError } = await supabase
@@ -655,6 +657,14 @@ export default function Lancamentos() {
         });
         return;
       }
+
+      console.log('📄 Dados da transação:', { 
+        oldStatus: transactionData.status, 
+        newStatus: status,
+        amount: transactionData.amount,
+        type: transactionData.type,
+        accountId: transactionData.account_id 
+      });
 
       const oldStatus = transactionData.status;
 
@@ -681,6 +691,7 @@ export default function Lancamentos() {
 
       // Atualizar saldo da conta se necessário
       const accountId = paymentAccountId || transactionData.account_id;
+      console.log('🏦 Account ID para atualizar:', accountId);
       
       if (accountId && oldStatus !== status) {
         let balanceChange = 0;
@@ -697,6 +708,8 @@ export default function Lancamentos() {
             : Number(transactionData.amount);
         }
 
+        console.log('💰 Mudança de saldo:', balanceChange);
+
         if (balanceChange !== 0) {
           // Buscar saldo atual da conta
           const { data: accountData, error: accountFetchError } = await supabase
@@ -710,7 +723,9 @@ export default function Lancamentos() {
             return;
           }
 
+          console.log('📊 Saldo atual da conta:', accountData.balance);
           const newBalance = Number(accountData.balance) + balanceChange;
+          console.log('📊 Novo saldo da conta:', newBalance);
 
           const { error: accountError } = await supabase
             .from('accounts')
@@ -718,13 +733,13 @@ export default function Lancamentos() {
             .eq('id', accountId);
 
           if (accountError) {
+            console.error('Erro ao atualizar saldo da conta:', accountError);
             // Se der erro na atualização da conta, reverter a transação
             await supabase
               .from('transactions')
               .update({ status: oldStatus })
               .eq('id', id);
 
-            console.error('Erro ao atualizar saldo da conta:', accountError);
             toast({
               title: "Erro",
               description: "Erro ao atualizar saldo da conta. Status revertido.",
@@ -732,7 +747,11 @@ export default function Lancamentos() {
             });
             return;
           }
+
+          console.log('✅ Saldo da conta atualizado com sucesso');
         }
+      } else {
+        console.log('⚠️  Não atualizando saldo - accountId:', accountId, 'mudou status:', oldStatus !== status);
       }
 
       toast({
