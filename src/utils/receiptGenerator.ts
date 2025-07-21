@@ -107,6 +107,20 @@ function numberToWords(num: number): string {
 export function generateReceipt(data: ReceiptData): void {
   const doc = new jsPDF();
   
+  // Função para justificar texto
+  const justifyText = (text: string, width: number, fontSize: number): { words: string[], spaces: number[] } => {
+    doc.setFontSize(fontSize);
+    const words = text.split(' ');
+    if (words.length <= 1) return { words, spaces: [] };
+    
+    const totalWordsWidth = words.reduce((sum, word) => sum + doc.getTextWidth(word), 0);
+    const availableSpaceWidth = width - totalWordsWidth;
+    const numberOfSpaces = words.length - 1;
+    const spaceWidth = availableSpaceWidth / numberOfSpaces;
+    
+    return { words, spaces: Array(numberOfSpaces).fill(spaceWidth) };
+  };
+  
   // Configurações para duas vias
   const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;
@@ -172,57 +186,88 @@ export function generateReceipt(data: ReceiptData): void {
     const recebiWidth = pageWidth - 2 * margin;
     const recebiLines = doc.splitTextToSize(textoRecebi, recebiWidth);
     
-    // Renderizar texto "Recebi(emos)" com formatação em negrito
-    recebiLines.forEach((line: string) => {
+    // Renderizar texto "Recebi(emos)" justificado
+    recebiLines.forEach((line: string, index: number) => {
       doc.setFont("helvetica", "normal");
-      let currentX = margin;
-      let remainingText = line;
       
-      // Nome do cliente em negrito
-      if (remainingText.includes(clientNameUpper)) {
-        const parts = remainingText.split(clientNameUpper);
-        doc.text(parts[0], currentX, currentY);
-        currentX += doc.getTextWidth(parts[0]);
+      // Para a última linha, não justificar (deixar alinhada à esquerda)
+      if (index === recebiLines.length - 1) {
+        // Renderizar última linha sem justificação, mas com formatação em negrito
+        let currentX = margin;
+        let remainingText = line;
         
-        doc.setFont("helvetica", "bold");
-        doc.text(clientNameUpper, currentX, currentY);
-        currentX += doc.getTextWidth(clientNameUpper);
+        // Nome do cliente em negrito
+        if (remainingText.includes(clientNameUpper)) {
+          const parts = remainingText.split(clientNameUpper);
+          doc.text(parts[0], currentX, currentY);
+          currentX += doc.getTextWidth(parts[0]);
+          
+          doc.setFont("helvetica", "bold");
+          doc.text(clientNameUpper, currentX, currentY);
+          currentX += doc.getTextWidth(clientNameUpper);
+          
+          doc.setFont("helvetica", "normal");
+          remainingText = parts[1] || '';
+        }
         
-        doc.setFont("helvetica", "normal");
-        remainingText = parts[1] || '';
-      }
-      
-      // Valor por extenso em negrito
-      if (remainingText.includes(valorExtenso)) {
-        const parts = remainingText.split(valorExtenso);
-        doc.text(parts[0], currentX, currentY);
-        currentX += doc.getTextWidth(parts[0]);
+        // Valor por extenso em negrito
+        if (remainingText.includes(valorExtenso)) {
+          const parts = remainingText.split(valorExtenso);
+          doc.text(parts[0], currentX, currentY);
+          currentX += doc.getTextWidth(parts[0]);
+          
+          doc.setFont("helvetica", "bold");
+          doc.text(valorExtenso, currentX, currentY);
+          currentX += doc.getTextWidth(valorExtenso);
+          
+          doc.setFont("helvetica", "normal");
+          remainingText = parts[1] || '';
+        }
         
-        doc.setFont("helvetica", "bold");
-        doc.text(valorExtenso, currentX, currentY);
-        currentX += doc.getTextWidth(valorExtenso);
+        // Descrição em negrito
+        if (remainingText.includes(data.description)) {
+          const parts = remainingText.split(data.description);
+          doc.text(parts[0], currentX, currentY);
+          currentX += doc.getTextWidth(parts[0]);
+          
+          doc.setFont("helvetica", "bold");
+          doc.text(data.description, currentX, currentY);
+          currentX += doc.getTextWidth(data.description);
+          
+          doc.setFont("helvetica", "normal");
+          remainingText = parts[1] || '';
+        }
         
-        doc.setFont("helvetica", "normal");
-        remainingText = parts[1] || '';
-      }
-      
-      // Descrição em negrito
-      if (remainingText.includes(data.description)) {
-        const parts = remainingText.split(data.description);
-        doc.text(parts[0], currentX, currentY);
-        currentX += doc.getTextWidth(parts[0]);
+        // Resto do texto
+        if (remainingText) {
+          doc.text(remainingText, currentX, currentY);
+        }
+      } else {
+        // Justificar linhas intermediárias
+        const justified = justifyText(line, recebiWidth, 10);
+        let currentX = margin;
         
-        doc.setFont("helvetica", "bold");
-        doc.text(data.description, currentX, currentY);
-        currentX += doc.getTextWidth(data.description);
-        
-        doc.setFont("helvetica", "normal");
-        remainingText = parts[1] || '';
-      }
-      
-      // Resto do texto
-      if (remainingText) {
-        doc.text(remainingText, currentX, currentY);
+        justified.words.forEach((word, wordIndex) => {
+          // Verificar formatação em negrito para palavras específicas
+          if (word.includes(clientNameUpper) || word === clientNameUpper) {
+            doc.setFont("helvetica", "bold");
+            doc.text(word, currentX, currentY);
+            doc.setFont("helvetica", "normal");
+          } else if (word.includes(data.description) || word === data.description) {
+            doc.setFont("helvetica", "bold");
+            doc.text(word, currentX, currentY);
+            doc.setFont("helvetica", "normal");
+          } else {
+            doc.text(word, currentX, currentY);
+          }
+          
+          currentX += doc.getTextWidth(word);
+          
+          // Adicionar espaço justificado (exceto após a última palavra)
+          if (wordIndex < justified.words.length - 1) {
+            currentX += justified.spaces[wordIndex];
+          }
+        });
       }
       
       currentY += 6;
