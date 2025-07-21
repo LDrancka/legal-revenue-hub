@@ -428,6 +428,15 @@ export default function Lancamentos() {
     return client?.name || "Cliente não encontrado";
   };
 
+  const getClientData = (clientId?: string) => {
+    if (!clientId) return { name: "Não informado", document: undefined };
+    const client = clients.find(c => c.id === clientId);
+    return {
+      name: client?.name || "Cliente não encontrado",
+      document: client?.document || undefined
+    };
+  };
+
   // Função para calcular data final baseada na frequência e repetições
   const calculateEndDate = (startDate: Date, frequency: string, repetitions: number) => {
     const date = new Date(startDate);
@@ -1057,9 +1066,9 @@ export default function Lancamentos() {
 
     // Gerar recibo se solicitado
     if (generatePaymentReceipt) {
-      const clientName = paymentTransaction.client_id 
-        ? getClientName(paymentTransaction.client_id) 
-        : undefined;
+      const clientData = paymentTransaction.client_id 
+        ? getClientData(paymentTransaction.client_id) 
+        : { name: undefined, document: undefined };
       const caseName = paymentTransaction.case_id 
         ? getCaseName(paymentTransaction.case_id) 
         : undefined;
@@ -1070,7 +1079,8 @@ export default function Lancamentos() {
         description: paymentTransaction.description,
         amount: paymentTransaction.amount,
         type: paymentTransaction.type,
-        clientName,
+        clientName: clientData.name,
+        clientCpf: clientData.document,
         caseName,
         accountName,
         paymentDate: paymentDate.toISOString().split('T')[0],
@@ -1299,9 +1309,9 @@ export default function Lancamentos() {
     
     // Gerar recibo se solicitado
     if (generatePartialReceipt) {
-      const clientName = partialTransaction.client_id 
-        ? getClientName(partialTransaction.client_id) 
-        : undefined;
+      const clientData = partialTransaction.client_id 
+        ? getClientData(partialTransaction.client_id) 
+        : { name: undefined, document: undefined };
       const caseName = partialTransaction.case_id 
         ? getCaseName(partialTransaction.case_id) 
         : undefined;
@@ -1313,7 +1323,8 @@ export default function Lancamentos() {
         amount: Number(partialAmount),
         originalAmount: partialTransaction.amount,
         type: partialTransaction.type,
-        clientName,
+        clientName: clientData.name,
+        clientCpf: clientData.document,
         caseName,
         accountName,
         paymentDate: partialPaymentDate.toISOString().split('T')[0],

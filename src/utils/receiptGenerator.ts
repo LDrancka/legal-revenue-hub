@@ -6,6 +6,7 @@ interface ReceiptData {
   amount: number;
   type: 'receita' | 'despesa';
   clientName?: string;
+  clientCpf?: string;
   caseName?: string;
   accountName?: string;
   paymentDate: string;
@@ -110,150 +111,138 @@ export function generateReceipt(data: ReceiptData): void {
   
   // Função para gerar uma via
   const generateVia = (startY: number, viaNumber: number) => {
-    let currentY = startY + 15;
+    let currentY = startY + 20;
   
-    // Função para adicionar texto centralizado
-    const addCenteredText = (text: string, fontSize: number = 10, isBold: boolean = false) => {
-      doc.setFontSize(fontSize);
-      if (isBold) doc.setFont("helvetica", "bold");
-      else doc.setFont("helvetica", "normal");
-      
-      const textWidth = doc.getStringUnitWidth(text) * fontSize / doc.internal.scaleFactor;
-      const x = (pageWidth - textWidth) / 2;
-      doc.text(text, x, currentY);
-      currentY += fontSize * 0.4 + 3;
-    };
-    
-    // Função para adicionar texto normal
-    const addText = (label: string, value: string, fontSize: number = 8) => {
-      doc.setFontSize(fontSize);
-      doc.setFont("helvetica", "bold");
-      doc.text(label, margin, currentY);
-      
-      doc.setFont("helvetica", "normal");
-      const labelWidth = doc.getStringUnitWidth(label) * fontSize / doc.internal.scaleFactor;
-      doc.text(value, margin + labelWidth + 3, currentY);
-      currentY += fontSize + 2;
-    };
-  
-    // Cabeçalho
-    addCenteredText("RECIBO DE PAGAMENTO", 12, true);
-    addCenteredText(`${viaNumber}ª VIA`, 8, true);
-    addCenteredText(data.userCompany || "Sistema Financeiro", 9);
-    currentY += 5;
-    
-    // Linha separadora
-    doc.setLineWidth(0.3);
-    doc.line(margin, currentY, pageWidth - margin, currentY);
-    currentY += 8;
-  
-    // Dados do recibo
-    addText("Recibo Nº:", data.transactionId.substring(0, 8).toUpperCase());
-    addText("Data:", new Date(data.paymentDate).toLocaleDateString('pt-BR'));
-    
-    // Cliente
-    if (data.clientName) {
-      addText("Cliente:", data.clientName);
-    }
-    
-    currentY += 2;
-    
-    // Valor
-    const valorLabel = data.isPartial ? "Valor Pago (Parcial):" : "Valor:";
-    const valorFormatado = new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(data.amount);
-    
-    doc.setFontSize(9);
+    // Título centralizado - RECIBO DE PAGAMENTO
+    doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    addText(valorLabel, valorFormatado, 9);
+    doc.text("RECIBO DE PAGAMENTO", pageWidth / 2, currentY, { align: 'center' });
     
-    // Valor por extenso
+    currentY += 15;
+    
+    // Valor alinhado à direita em negrito
+    const valorFormatado = `R$ ${data.amount.toFixed(2).replace('.', ',')}`;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text(valorFormatado, pageWidth - margin, currentY, { align: 'right' });
+    
+    currentY += 12;
+    
+    // Texto do recibo seguindo o formato especificado
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    
+    // Primeira linha: "Recebi(emos) de NOME DO CLIENTE"
+    let text = "Recebi(emos) de ";
+    doc.text(text, margin, currentY);
+    
+    // Nome do cliente em caixa alta e negrito
+    const textWidth = doc.getTextWidth(text);
+    doc.setFont("helvetica", "bold");
+    const clientNameUpper = data.clientName?.toUpperCase() || "CLIENTE";
+    doc.text(clientNameUpper, margin + textWidth, currentY);
+    
+    // CPF se existir
+    const clientNameWidth = doc.getTextWidth(clientNameUpper);
+    doc.setFont("helvetica", "normal");
+    if (data.clientCpf) {
+      const cpfText = `, CPF ${data.clientCpf}`;
+      doc.text(cpfText, margin + textWidth + clientNameWidth, currentY);
+    }
+    
+    currentY += 8;
+    
+    // Segunda linha: "a importância de (valor por extenso)"
+    text = "a importância de ";
+    doc.text(text, margin, currentY);
+    
+    const importanciaWidth = doc.getTextWidth(text);
+    doc.setFont("helvetica", "bold");
     const valorExtenso = numberToWords(data.amount);
-    doc.setFontSize(8);
+    
+    // Quebrar o valor por extenso em múltiplas linhas se necessário
+    const maxWidth = pageWidth - margin - importanciaWidth - 20;
+    const extensoLines = doc.splitTextToSize(valorExtenso, maxWidth);
+    doc.text(extensoLines, margin + importanciaWidth, currentY);
+    
+    currentY += extensoLines.length * 6 + 2;
+    
+    // Terceira linha: "referente à DESCRIÇÃO"
     doc.setFont("helvetica", "normal");
-    doc.text("(", margin, currentY);
-    const extensoLines = doc.splitTextToSize(valorExtenso, pageWidth - (margin * 2) - 10);
-    doc.text(extensoLines, margin + 5, currentY);
-    currentY += extensoLines.length * 8 + 2;
-    doc.text(")", pageWidth - margin - 5, currentY - 2);
+    text = "referente à ";
+    doc.text(text, margin, currentY);
     
-    if (data.isPartial && data.originalAmount) {
-      const originalFormatado = new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'BRL'
-      }).format(data.originalAmount);
-      addText("Valor Original:", originalFormatado);
-    }
+    const referenteWidth = doc.getTextWidth(text);
+    doc.setFont("helvetica", "bold");
+    const descricaoLines = doc.splitTextToSize(data.description, pageWidth - margin - referenteWidth - 20);
+    doc.text(descricaoLines, margin + referenteWidth, currentY);
     
-    currentY += 2;
-  
-    // Descrição
-    addText("Referente à:", data.description);
+    currentY += descricaoLines.length * 6 + 8;
     
-    // Dados adicionais
-    if (data.caseName) addText("Caso:", data.caseName);
-    if (data.accountName) addText("Conta:", data.accountName);
-    
-    // Forma de pagamento
-    if (data.paymentMethod) {
-      addText("Forma de Pagamento:", data.paymentMethod);
-      
-      if ((data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX') && data.accountData) {
-        addText("Dados da Conta:", data.accountData);
-      }
-      
-      if (data.paymentMethod === 'PIX' && data.pixKey) {
-        addText("Chave PIX:", data.pixKey);
-      }
-      
-      if ((data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX') && data.beneficiaryName) {
-        addText("Beneficiário:", data.beneficiaryName);
-      }
-    }
-    
-    if (data.observations) {
-      currentY += 2;
-      addText("Obs:", data.observations);
-    }
-    
-    currentY += 8;
-  
-    // Linha separadora
-    doc.line(margin, currentY, pageWidth - margin, currentY);
-    currentY += 8;
-    
-    // Texto de confirmação
-    const textoConfirmacao = data.type === 'receita' 
-      ? (data.isPartial 
-          ? "Declaro ter recebido o valor acima como pagamento PARCIAL referente ao serviço descrito."
-          : "Declaro ter recebido o valor acima como pagamento referente ao serviço descrito.")
-      : (data.isPartial 
-          ? "Declaro ter recebido o valor acima como pagamento PARCIAL referente ao serviço prestado."
-          : "Declaro ter recebido o valor acima como pagamento referente ao serviço prestado.");
-      
-    doc.setFontSize(7);
+    // Parágrafo sobre quitação
     doc.setFont("helvetica", "normal");
+    const quitacaoTexto1 = "Para maior clareza, firmo(amos) o presente recibo que comprova o recebimento integral do valor mencionado, concedendo ";
+    const quitacao1Lines = doc.splitTextToSize(quitacaoTexto1, pageWidth - 2 * margin);
+    doc.text(quitacao1Lines, margin, currentY);
     
-    // Quebrar texto em linhas se necessário
-    const lines = doc.splitTextToSize(textoConfirmacao, pageWidth - (margin * 2));
-    doc.text(lines, margin, currentY);
-    currentY += lines.length * 7 + 8;
+    currentY += quitacao1Lines.length * 6;
     
-    // Assinatura
-    const signatoryName = data.type === 'receita' 
+    doc.setFont("helvetica", "bold");
+    doc.text("quitação plena, geral e irrevogável", margin, currentY);
+    
+    const quitacaoWidth = doc.getTextWidth("quitação plena, geral e irrevogável");
+    doc.setFont("helvetica", "normal");
+    doc.text(" pela quantia recebida.", margin + quitacaoWidth, currentY);
+    
+    currentY += 15;
+    
+    // Dados da forma de pagamento (se não for dinheiro) - em fonte menor
+    if (data.paymentMethod && data.paymentMethod !== 'Dinheiro') {
+      doc.setFontSize(8);
+      doc.text(`Forma de Pagamento: ${data.paymentMethod}`, margin, currentY);
+      currentY += 5;
+      
+      if (data.accountData && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
+        doc.text(`Dados da Conta: ${data.accountData}`, margin, currentY);
+        currentY += 5;
+      }
+      
+      if (data.pixKey && data.paymentMethod === 'PIX') {
+        doc.text(`Chave PIX: ${data.pixKey}`, margin, currentY);
+        currentY += 5;
+      }
+      
+      if (data.beneficiaryName && (data.paymentMethod === 'Transferência' || data.paymentMethod === 'PIX')) {
+        doc.text(`Beneficiário: ${data.beneficiaryName}`, margin, currentY);
+        currentY += 5;
+      }
+      
+      currentY += 8;
+      doc.setFontSize(10); // Voltar ao tamanho normal
+    }
+    
+    // Cidade e data alinhados à direita
+    const cidade = "São Paulo"; // Você pode adicionar a cidade como parâmetro se necessário
+    const dataFormatada = new Date(data.paymentDate).toLocaleDateString('pt-BR');
+    const cidadeData = `${cidade}, ${dataFormatada}`;
+    
+    doc.setFont("helvetica", "normal");
+    doc.text(cidadeData, pageWidth - margin, currentY, { align: 'right' });
+    
+    currentY += 15;
+    
+    // Linha para assinatura
+    doc.line(margin + 30, currentY, pageWidth - margin - 30, currentY);
+    currentY += 6;
+    
+    // Nome do assinante
+    const signataryName = data.type === 'receita' 
       ? (data.userDisplayName || 'Assinatura') 
       : (data.clientName || 'Assinatura');
     
-    currentY += 8;
-    doc.line(margin + 20, currentY, pageWidth - margin - 20, currentY);
-    currentY += 6;
-    
-    doc.setFontSize(7);
+    doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    const sigWidth = doc.getStringUnitWidth(signatoryName) * 7 / doc.internal.scaleFactor;
-    doc.text(signatoryName, (pageWidth - sigWidth) / 2, currentY);
+    doc.text(signataryName, pageWidth / 2, currentY, { align: 'center' });
   };
   
   // Gerar primeira via
