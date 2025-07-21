@@ -948,6 +948,19 @@ export default function Lancamentos() {
       return;
     }
 
+    // Se tem rateio, não precisa de conta específica (será distribuído automaticamente)
+    // Se não tem rateio, exige conta
+    if (!paymentTransaction.splits || paymentTransaction.splits.length === 0) {
+      if (!paymentAccount) {
+        toast({
+          title: "Erro",
+          description: "Selecione a conta para pagamento/recebimento",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
     updateTransactionStatus(
       paymentTransaction.id,
       "pago",
@@ -1864,24 +1877,45 @@ export default function Lancamentos() {
                             </Select>
                           </div>
                           
-                          <div className="space-y-1">
-                            <Label className="text-xs">Percentual (%)</Label>
-                            <Input
-                              type="number"
-                              className="h-8"
-                              min="0"
-                              max="100"
-                              step="0.01"
-                              placeholder="0"
-                              value={rateio.percentage || ""}
-                              onChange={(e) => {
-                                const percentage = parseFloat(e.target.value) || 0;
-                                const amount = formData.amount ? (parseFloat(formData.amount) * percentage / 100) : 0;
-                                const newRateios = [...formData.rateios];
-                                newRateios[index] = { ...rateio, percentage, amount };
-                                setFormData({...formData, rateios: newRateios});
-                              }}
-                            />
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Percentual (%)</Label>
+                              <Input
+                                type="number"
+                                className="h-8"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                placeholder="0"
+                                value={rateio.percentage || ""}
+                                onChange={(e) => {
+                                  const percentage = parseFloat(e.target.value) || 0;
+                                  const amount = formData.amount ? (parseFloat(formData.amount) * percentage / 100) : 0;
+                                  const newRateios = [...formData.rateios];
+                                  newRateios[index] = { ...rateio, percentage, amount };
+                                  setFormData({...formData, rateios: newRateios});
+                                }}
+                              />
+                            </div>
+                            
+                            <div className="space-y-1">
+                              <Label className="text-xs">Valor (R$)</Label>
+                              <Input
+                                type="number"
+                                className="h-8"
+                                min="0"
+                                step="0.01"
+                                placeholder="0"
+                                value={rateio.amount || ""}
+                                onChange={(e) => {
+                                  const amount = parseFloat(e.target.value) || 0;
+                                  const percentage = formData.amount ? (amount * 100 / parseFloat(formData.amount)) : 0;
+                                  const newRateios = [...formData.rateios];
+                                  newRateios[index] = { ...rateio, amount, percentage };
+                                  setFormData({...formData, rateios: newRateios});
+                                }}
+                              />
+                            </div>
                           </div>
                           
                           <div className="flex items-center gap-1">
@@ -2373,35 +2407,21 @@ export default function Lancamentos() {
               <div className="space-y-2">
                 <Label>Conta para {paymentTransaction?.type === "receita" ? "Recebimento" : "Pagamento"} *</Label>
                 {paymentTransaction?.splits && paymentTransaction.splits.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="text-sm text-muted-foreground bg-muted p-3 rounded">
-                      <strong>Contas do rateio:</strong>
+                  <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded">
+                    <div className="text-sm text-green-700 dark:text-green-300 font-medium mb-2">
+                      ✅ Quitação Total - Rateio Automático
+                    </div>
+                    <div className="text-sm text-muted-foreground mb-3">
+                      O valor será distribuído automaticamente entre as contas conforme o rateio original:
+                    </div>
+                    <div className="space-y-1">
                       {paymentTransaction.splits.map((split, index) => (
-                        <div key={index} className="mt-1">
-                          • {getAccountName(split.account_id)} ({split.percentage}%) - {formatCurrency(split.amount)}
+                        <div key={index} className="flex justify-between text-sm">
+                          <span>• {getAccountName(split.account_id)} ({split.percentage}%)</span>
+                          <span className="font-medium">{formatCurrency(split.amount)}</span>
                         </div>
                       ))}
                     </div>
-                    <Select value={paymentAccount} onValueChange={setPaymentAccount}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione a conta de destino" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {paymentTransaction.splits.map((split) => {
-                          const account = accounts.find(acc => acc.id === split.account_id);
-                          return account ? (
-                            <SelectItem key={account.id} value={account.id}>
-                              {account.name} ({split.percentage}%)
-                            </SelectItem>
-                          ) : null;
-                        })}
-                        {accounts.filter(account => 
-                          !paymentTransaction.splits?.some(split => split.account_id === account.id)
-                        ).map((account) => (
-                          <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
                   </div>
                 ) : (
                   <Select value={paymentAccount} onValueChange={setPaymentAccount}>
