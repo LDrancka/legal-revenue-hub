@@ -498,9 +498,10 @@ export default function Lancamentos() {
             });
           }
 
-          const { error } = await supabase
+          const { data: insertedTransactions, error } = await supabase
             .from('transactions')
-            .insert(transactions);
+            .insert(transactions)
+            .select('id, description');
 
           if (error) {
             console.error('Erro ao criar transações recorrentes:', error);
@@ -512,8 +513,53 @@ export default function Lancamentos() {
             return;
           }
 
-          // Se os lançamentos recorrentes foram criados como "pago", atualizar o saldo da conta
-          if (formData.status === "pago" && formData.account_id && !formData.temRateio) {
+          // Se tem rateio, criar os splits para cada transação recorrente
+          if (formData.temRateio && formData.rateios.length > 0 && insertedTransactions) {
+            for (const transaction of insertedTransactions) {
+              const splitsToInsert = formData.rateios.map(rateio => ({
+                transaction_id: transaction.id,
+                account_id: rateio.account_id,
+                amount: rateio.amount,
+                percentage: rateio.percentage
+              }));
+
+              const { error: splitsError } = await supabase
+                .from('transaction_splits')
+                .insert(splitsToInsert);
+
+              if (splitsError) {
+                console.error('Erro ao criar splits para transação recorrente:', splitsError);
+              }
+            }
+
+            // Se os lançamentos recorrentes foram criados como "pago", atualizar saldos das contas do rateio
+            if (formData.status === "pago") {
+              for (const rateio of formData.rateios) {
+                const balanceChangePerTransaction = formData.type === "receita" 
+                  ? rateio.amount 
+                  : -rateio.amount;
+                
+                const totalBalanceChange = balanceChangePerTransaction * transactions.length;
+
+                // Buscar saldo atual da conta
+                const { data: accountData, error: accountFetchError } = await supabase
+                  .from('accounts')
+                  .select('balance')
+                  .eq('id', rateio.account_id)
+                  .single();
+
+                if (!accountFetchError && accountData) {
+                  const newBalance = Number(accountData.balance) + totalBalanceChange;
+
+                  await supabase
+                    .from('accounts')
+                    .update({ balance: newBalance })
+                    .eq('id', rateio.account_id);
+                }
+              }
+            }
+          } else if (formData.status === "pago" && formData.account_id && !formData.temRateio) {
+            // Se não tem rateio, atualizar saldo da conta única
             const balanceChangePerTransaction = formData.type === "receita" 
               ? parseFloat(formData.amount) 
               : -parseFloat(formData.amount);
@@ -752,7 +798,14 @@ export default function Lancamentos() {
       setPaymentTransaction(transaction);
       setPaymentDate(new Date());
       setPaymentObservations("");
-      setPaymentAccount(transaction.account_id || "");
+      
+      // Se tem splits (rateio), pré-preencher com a primeira conta do rateio
+      if (transaction.splits && transaction.splits.length > 0) {
+        setPaymentAccount(transaction.splits[0].account_id);
+      } else {
+        setPaymentAccount(transaction.account_id || "");
+      }
+      
       setIsPaymentDialogOpen(true);
     } else {
       // Abrir modal de confirmação para desfazer quitação
@@ -842,7 +895,14 @@ export default function Lancamentos() {
     setPartialTransaction(transaction);
     setPartialAmount("");
     setPartialPaymentDate(new Date());
-    setPartialPaymentAccount(transaction.account_id || "");
+    
+    // Se tem splits (rateio), pré-preencher com a primeira conta do rateio
+    if (transaction.splits && transaction.splits.length > 0) {
+      setPartialPaymentAccount(transaction.splits[0].account_id);
+    } else {
+      setPartialPaymentAccount(transaction.account_id || "");
+    }
+    
     setPartialObservations("");
     setNewDueDate(new Date());
     setIsPartialPaymentDialogOpen(true);
@@ -2081,16 +2141,49 @@ export default function Lancamentos() {
 
               <div className="space-y-2">
                 <Label>Conta para {paymentTransaction?.type === "receita" ? "Recebimento" : "Pagamento"} *</Label>
-                <Select value={paymentAccount} onValueChange={setPaymentAccount}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a conta" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {paymentTransaction?.splits && paymentTransaction.splits.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground bg-muted p-3 rounded">
+                      <strong>Contas do rateio:</strong>
+                      {paymentTransaction.splits.map((split, index) => (
+                        <div key={index} className="mt-1">
+                          • {getAccountName(split.account_id)} ({split.percentage}%) - {formatCurrency(split.amount)}
+                        </div>
+                      ))}
+                    </div>
+                    <Select value={paymentAccount} onValueChange={setPaymentAccount}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a conta de destino" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paymentTransaction.splits.map((split) => {
+                          const account = accounts.find(acc => acc.id === split.account_id);
+                          return account ? (
+                            <SelectItem key={account.id} value={account.id}>
+                              {account.name} ({split.percentage}%)
+                            </SelectItem>
+                          ) : null;
+                        })}
+                        {accounts.filter(account => 
+                          !paymentTransaction.splits?.some(split => split.account_id === account.id)
+                        ).map((account) => (
+                          <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <Select value={paymentAccount} onValueChange={setPaymentAccount}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a conta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -2204,16 +2297,49 @@ export default function Lancamentos() {
 
               <div className="space-y-2">
                 <Label>Conta para {partialTransaction?.type === "receita" ? "Recebimento" : "Pagamento"} *</Label>
-                <Select value={partialPaymentAccount} onValueChange={setPartialPaymentAccount}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a conta" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {partialTransaction?.splits && partialTransaction.splits.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground bg-muted p-3 rounded">
+                      <strong>Contas do rateio:</strong>
+                      {partialTransaction.splits.map((split, index) => (
+                        <div key={index} className="mt-1">
+                          • {getAccountName(split.account_id)} ({split.percentage}%) - {formatCurrency(split.amount)}
+                        </div>
+                      ))}
+                    </div>
+                    <Select value={partialPaymentAccount} onValueChange={setPartialPaymentAccount}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a conta de destino" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {partialTransaction.splits.map((split) => {
+                          const account = accounts.find(acc => acc.id === split.account_id);
+                          return account ? (
+                            <SelectItem key={account.id} value={account.id}>
+                              {account.name} ({split.percentage}%)
+                            </SelectItem>
+                          ) : null;
+                        })}
+                        {accounts.filter(account => 
+                          !partialTransaction.splits?.some(split => split.account_id === account.id)
+                        ).map((account) => (
+                          <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <Select value={partialPaymentAccount} onValueChange={setPartialPaymentAccount}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a conta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="space-y-2">
