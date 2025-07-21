@@ -129,6 +129,7 @@ export default function Lancamentos() {
   const [partialPaymentAccount, setPartialPaymentAccount] = useState("");
   const [partialObservations, setPartialObservations] = useState("");
   const [newDueDate, setNewDueDate] = useState<Date>();
+  const [partialSplitAmounts, setPartialSplitAmounts] = useState<{ [accountId: string]: string }>({});
 
   // Estados para formulário de cobrança Asaas
   const [isAsaasDialogOpen, setIsAsaasDialogOpen] = useState(false);
@@ -896,10 +897,16 @@ export default function Lancamentos() {
     setPartialAmount("");
     setPartialPaymentDate(new Date());
     
-    // Se tem splits (rateio), pré-preencher com a primeira conta do rateio
+    // Se tem splits (rateio), inicializar valores por conta
     if (transaction.splits && transaction.splits.length > 0) {
+      const initialSplitAmounts: { [accountId: string]: string } = {};
+      transaction.splits.forEach(split => {
+        initialSplitAmounts[split.account_id] = "";
+      });
+      setPartialSplitAmounts(initialSplitAmounts);
       setPartialPaymentAccount(transaction.splits[0].account_id);
     } else {
+      setPartialSplitAmounts({});
       setPartialPaymentAccount(transaction.account_id || "");
     }
     
@@ -909,7 +916,7 @@ export default function Lancamentos() {
   };
 
   const handlePartialPaymentSubmit = async () => {
-    if (!partialTransaction || !partialPaymentDate || !partialAmount || !partialPaymentAccount || !newDueDate) {
+    if (!partialTransaction || !partialPaymentDate || !newDueDate) {
       toast({
         title: "Erro",
         description: "Preencha todos os campos obrigatórios",
@@ -918,7 +925,61 @@ export default function Lancamentos() {
       return;
     }
 
-    const partialValue = parseFloat(partialAmount);
+    // Se tem splits, validar e calcular com base nos valores por conta
+    let partialValue = 0;
+    let paidSplits: Array<{ account_id: string; amount: number }> = [];
+    
+    if (partialTransaction.splits && partialTransaction.splits.length > 0) {
+      // Validar se pelo menos uma conta tem valor
+      const hasAnyValue = Object.values(partialSplitAmounts).some(value => value && parseFloat(value) > 0);
+      if (!hasAnyValue) {
+        toast({
+          title: "Erro",
+          description: "Informe o valor a quitar para pelo menos uma conta",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Calcular total a ser quitado e criar lista de splits pagos
+      for (const [accountId, amountStr] of Object.entries(partialSplitAmounts)) {
+        if (amountStr && parseFloat(amountStr) > 0) {
+          const amount = parseFloat(amountStr);
+          const originalSplit = partialTransaction.splits.find(s => s.account_id === accountId);
+          if (originalSplit && amount > originalSplit.amount) {
+            toast({
+              title: "Erro",
+              description: `Valor para ${getAccountName(accountId)} não pode ser maior que ${formatCurrency(originalSplit.amount)}`,
+              variant: "destructive"
+            });
+            return;
+          }
+          partialValue += amount;
+          paidSplits.push({ account_id: accountId, amount });
+        }
+      }
+    } else {
+      // Transação sem splits - usar valor único
+      if (!partialAmount || !partialPaymentAccount) {
+        toast({
+          title: "Erro",
+          description: "Preencha o valor e a conta para quitação",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      partialValue = parseFloat(partialAmount);
+      if (partialValue <= 0 || partialValue >= partialTransaction.amount) {
+        toast({
+          title: "Erro",
+          description: "Valor parcial deve ser maior que zero e menor que o valor total",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
     const remainingValue = partialTransaction.amount - partialValue;
 
     if (partialValue <= 0 || partialValue >= partialTransaction.amount) {
@@ -932,65 +993,96 @@ export default function Lancamentos() {
 
     try {
       // 1. Marcar a transação original como paga com valor parcial
+      const paymentAccountId = partialTransaction.splits && partialTransaction.splits.length > 0 
+        ? null // Para splits, não definir payment_account_id específico
+        : partialPaymentAccount;
+        
       await updateTransactionStatus(
         partialTransaction.id,
         "pago",
         partialPaymentDate.toISOString().split('T')[0],
         `Pagamento parcial: ${formatCurrency(partialValue)}. ${partialObservations}`,
-        partialPaymentAccount
+        paymentAccountId
       );
 
-      // 2. Atualizar o valor da transação original para o valor pago
+      // 2. Se tem splits, atualizar os splits originais com os valores pagos
+      if (partialTransaction.splits && partialTransaction.splits.length > 0) {
+        // Atualizar splits originais para refletir os valores pagos
+        for (const paidSplit of paidSplits) {
+          const { error: updateSplitError } = await supabase
+            .from('transaction_splits')
+            .update({ amount: paidSplit.amount })
+            .eq('transaction_id', partialTransaction.id)
+            .eq('account_id', paidSplit.account_id);
+            
+          if (updateSplitError) {
+            console.error('Erro ao atualizar split:', updateSplitError);
+          }
+        }
+      }
+
+      // 3. Atualizar o valor da transação original para o valor pago
       await supabase
         .from('transactions')
         .update({ amount: partialValue })
         .eq('id', partialTransaction.id);
 
-      // 3. Criar nova transação com valor restante e nova data de vencimento
-      const newTransaction = {
-        type: partialTransaction.type,
-        description: `${partialTransaction.description} - Saldo restante`,
-        amount: remainingValue,
-        account_id: partialTransaction.splits && partialTransaction.splits.length > 0 ? null : partialTransaction.account_id,
-        case_id: partialTransaction.case_id,
-        client_id: partialTransaction.client_id, // Copiar o cliente
-        category_id: partialTransaction.category_id, // Copiar a categoria
-        due_date: newDueDate.toISOString().split('T')[0],
-        status: "pendente" as const,
-        observations: `Valor restante de quitação parcial. Valor original: ${formatCurrency(partialTransaction.amount)}`,
-        is_recurring: false,
-        user_id: user?.id
-      };
+      // 4. Criar nova transação com valor restante apenas se houver saldo restante
+      if (remainingValue > 0) {
+        const newTransaction = {
+          type: partialTransaction.type,
+          description: `${partialTransaction.description} - Saldo restante`,
+          amount: remainingValue,
+          account_id: partialTransaction.splits && partialTransaction.splits.length > 0 ? null : partialTransaction.account_id,
+          case_id: partialTransaction.case_id,
+          client_id: partialTransaction.client_id,
+          category_id: partialTransaction.category_id,
+          due_date: newDueDate.toISOString().split('T')[0],
+          status: "pendente" as const,
+          observations: `Valor restante de quitação parcial. Valor original: ${formatCurrency(partialTransaction.amount)}`,
+          is_recurring: false,
+          user_id: user?.id
+        };
 
-      const { data: newTransactionData, error: insertError } = await supabase
-        .from('transactions')
-        .insert(newTransaction)
-        .select('id')
-        .single();
+        const { data: newTransactionData, error: insertError } = await supabase
+          .from('transactions')
+          .insert(newTransaction)
+          .select('id')
+          .single();
 
-      if (insertError) {
-        throw insertError;
-      }
+        if (insertError) {
+          throw insertError;
+        }
 
-      // 4. Se a transação original tem rateio, criar splits proporcionais para a nova transação
-      if (partialTransaction.splits && partialTransaction.splits.length > 0 && newTransactionData) {
-        const splitsToInsert = partialTransaction.splits.map(split => {
-          const proportionalAmount = (split.amount / partialTransaction.amount) * remainingValue;
-          return {
-            transaction_id: newTransactionData.id,
-            account_id: split.account_id,
-            amount: proportionalAmount,
-            percentage: split.percentage
-          };
-        });
+        // 5. Se a transação original tem rateio, criar splits para o saldo restante
+        if (partialTransaction.splits && partialTransaction.splits.length > 0 && newTransactionData) {
+          const splitsToInsert = partialTransaction.splits
+            .map(split => {
+              const paidAmount = paidSplits.find(p => p.account_id === split.account_id)?.amount || 0;
+              const remainingSplitAmount = split.amount - paidAmount;
+              
+              if (remainingSplitAmount > 0) {
+                return {
+                  transaction_id: newTransactionData.id,
+                  account_id: split.account_id,
+                  amount: remainingSplitAmount,
+                  percentage: (remainingSplitAmount / remainingValue) * 100
+                };
+              }
+              return null;
+            })
+            .filter(split => split !== null);
 
-        const { error: splitsError } = await supabase
-          .from('transaction_splits')
-          .insert(splitsToInsert);
+          if (splitsToInsert.length > 0) {
+            const { error: splitsError } = await supabase
+              .from('transaction_splits')
+              .insert(splitsToInsert);
 
-        if (splitsError) {
-          console.error('Erro ao criar splits para nova transação:', splitsError);
-          throw splitsError;
+            if (splitsError) {
+              console.error('Erro ao criar splits para nova transação:', splitsError);
+              throw splitsError;
+            }
+          }
         }
       }
 
@@ -2283,20 +2375,70 @@ export default function Lancamentos() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Valor a Quitar *</Label>
-                <Input
-                  type="number"
-                  placeholder="0,00"
-                  value={partialAmount}
-                  onChange={(e) => setPartialAmount(e.target.value)}
-                />
-                {partialAmount && partialTransaction && (
-                  <div className="text-sm text-muted-foreground">
-                    Valor restante: {formatCurrency((partialTransaction.amount || 0) - parseFloat(partialAmount || "0"))}
-                  </div>
-                )}
-              </div>
+              {/* Se tem splits, mostrar inputs por conta */}
+              {partialTransaction?.splits && partialTransaction.splits.length > 0 ? (
+                <div className="space-y-4">
+                  <Label>Valores a Quitar por Conta</Label>
+                  {partialTransaction.splits.map((split, index) => (
+                    <div key={index} className="space-y-2 p-3 border rounded">
+                      <div className="flex justify-between items-center">
+                        <Label className="font-medium">{getAccountName(split.account_id)}</Label>
+                        <span className="text-sm text-muted-foreground">
+                          Total: {formatCurrency(split.amount)} ({split.percentage}%)
+                        </span>
+                      </div>
+                      <Input
+                        type="number"
+                        placeholder="0,00"
+                        value={partialSplitAmounts[split.account_id] || ""}
+                        onChange={(e) => setPartialSplitAmounts(prev => ({
+                          ...prev,
+                          [split.account_id]: e.target.value
+                        }))}
+                        max={split.amount}
+                      />
+                      {partialSplitAmounts[split.account_id] && (
+                        <div className="text-sm text-muted-foreground">
+                          Restante: {formatCurrency(split.amount - parseFloat(partialSplitAmounts[split.account_id] || "0"))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {/* Resumo do total */}
+                  {(() => {
+                    const totalParcial = Object.values(partialSplitAmounts)
+                      .filter(value => value && parseFloat(value) > 0)
+                      .reduce((sum, value) => sum + parseFloat(value), 0);
+                    return totalParcial > 0 && (
+                      <div className="p-3 bg-muted rounded">
+                        <div className="flex justify-between">
+                          <span>Total a quitar:</span>
+                          <span className="font-medium">{formatCurrency(totalParcial)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Valor restante:</span>
+                          <span className="font-medium">{formatCurrency((partialTransaction?.amount || 0) - totalParcial)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Valor a Quitar *</Label>
+                  <Input
+                    type="number"
+                    placeholder="0,00"
+                    value={partialAmount}
+                    onChange={(e) => setPartialAmount(e.target.value)}
+                  />
+                  {partialAmount && partialTransaction && (
+                    <div className="text-sm text-muted-foreground">
+                      Valor restante: {formatCurrency((partialTransaction.amount || 0) - parseFloat(partialAmount || "0"))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Data do {partialTransaction?.type === "receita" ? "Recebimento" : "Pagamento"} *</Label>
@@ -2321,40 +2463,10 @@ export default function Lancamentos() {
                 </Popover>
               </div>
 
-              <div className="space-y-2">
-                <Label>Conta para {partialTransaction?.type === "receita" ? "Recebimento" : "Pagamento"} *</Label>
-                {partialTransaction?.splits && partialTransaction.splits.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="text-sm text-muted-foreground bg-muted p-3 rounded">
-                      <strong>Contas do rateio:</strong>
-                      {partialTransaction.splits.map((split, index) => (
-                        <div key={index} className="mt-1">
-                          • {getAccountName(split.account_id)} ({split.percentage}%) - {formatCurrency(split.amount)}
-                        </div>
-                      ))}
-                    </div>
-                    <Select value={partialPaymentAccount} onValueChange={setPartialPaymentAccount}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione a conta de destino" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {partialTransaction.splits.map((split) => {
-                          const account = accounts.find(acc => acc.id === split.account_id);
-                          return account ? (
-                            <SelectItem key={account.id} value={account.id}>
-                              {account.name} ({split.percentage}%)
-                            </SelectItem>
-                          ) : null;
-                        })}
-                        {accounts.filter(account => 
-                          !partialTransaction.splits?.some(split => split.account_id === account.id)
-                        ).map((account) => (
-                          <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : (
+              {/* Mostrar seleção de conta apenas para transações sem splits */}
+              {(!partialTransaction?.splits || partialTransaction.splits.length === 0) && (
+                <div className="space-y-2">
+                  <Label>Conta para {partialTransaction?.type === "receita" ? "Recebimento" : "Pagamento"} *</Label>
                   <Select value={partialPaymentAccount} onValueChange={setPartialPaymentAccount}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione a conta" />
@@ -2365,8 +2477,8 @@ export default function Lancamentos() {
                       ))}
                     </SelectContent>
                   </Select>
-                )}
-              </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Nova Data de Vencimento para o Saldo Restante *</Label>
