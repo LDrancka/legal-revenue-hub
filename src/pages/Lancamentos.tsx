@@ -131,7 +131,6 @@ export default function Lancamentos() {
     mime_type: string;
     created_at: string;
   }>>([]);
-  
   // Estados para confirmação de desfazer quitação
   const [isUndoDialogOpen, setIsUndoDialogOpen] = useState(false);
   const [undoTransaction, setUndoTransaction] = useState<Transaction | null>(null);
@@ -163,7 +162,14 @@ export default function Lancamentos() {
     contatoEmail: "",
     contatoCpfCnpj: ""
   });
+  
+  // Estados para confirmação de exclusão
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteTransaction, setDeleteTransaction] = useState<Transaction | null>(null);
 
+  // Estados para confirmação de exclusão em massa  
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+  
   // Form state
   const [formData, setFormData] = useState({
     type: "" as "receita" | "despesa" | "",
@@ -791,10 +797,7 @@ export default function Lancamentos() {
     setIsDialogOpen(true);
   };
 
-  // Estados para confirmação de exclusão
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [deleteTransaction, setDeleteTransaction] = useState<Transaction | null>(null);
-
+  
   const handleDeleteClick = (transaction: Transaction) => {
     setDeleteTransaction(transaction);
     setIsDeleteDialogOpen(true);
@@ -850,9 +853,7 @@ export default function Lancamentos() {
     }
   };
 
-  // Estados para exclusão em lote
-  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
-
+  
   const handleSelectTransaction = (transactionId: string) => {
     setSelectedTransactions(prev => 
       prev.includes(transactionId) 
