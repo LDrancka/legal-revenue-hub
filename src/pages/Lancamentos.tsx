@@ -1623,10 +1623,10 @@ export default function Lancamentos() {
                       placeholder={formData.type === 'despesa' ? '-0,00' : '0,00'}
                       value={formData.amount}
                       onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                      className={formData.type === 'despesa' ? 'text-red-500 font-semibold pl-8' : ''}
+                      className={formData.type === 'despesa' ? 'text-red-500 font-semibold pl-4' : ''}
                     />
                     {formData.type === 'despesa' && (
-                      <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
+                      <div className="absolute inset-y-0 left-1 flex items-center pointer-events-none">
                         <span className="text-red-500 font-semibold text-sm">-</span>
                       </div>
                     )}
