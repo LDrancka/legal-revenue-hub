@@ -546,6 +546,17 @@ export default function Lancamentos() {
       };
 
       if (editingTransaction) {
+        // Primeiro, excluir splits existentes
+        const { error: deleteSplitsError } = await supabase
+          .from('transaction_splits')
+          .delete()
+          .eq('transaction_id', editingTransaction.id);
+
+        if (deleteSplitsError) {
+          console.error('Erro ao excluir splits existentes:', deleteSplitsError);
+        }
+
+        // Atualizar a transação
         const { error } = await supabase
           .from('transactions')
           .update(transactionData as any)
@@ -559,6 +570,29 @@ export default function Lancamentos() {
             variant: "destructive"
           });
           return;
+        }
+
+        // Se tem rateio, criar novos splits
+        if (formData.temRateio && formData.rateios.length > 0) {
+          const splitsToInsert = formData.rateios.map(rateio => ({
+            transaction_id: editingTransaction.id,
+            account_id: rateio.account_id,
+            amount: rateio.amount,
+            percentage: rateio.percentage
+          }));
+
+          const { error: splitsError } = await supabase
+            .from('transaction_splits')
+            .insert(splitsToInsert);
+
+          if (splitsError) {
+            console.error('Erro ao criar novos splits:', splitsError);
+            toast({
+              title: "Aviso",
+              description: "Lançamento atualizado, mas houve erro ao salvar o rateio",
+              variant: "destructive"
+            });
+          }
         }
 
         toast({
@@ -813,6 +847,18 @@ export default function Lancamentos() {
 
   const handleEdit = (transaction: Transaction) => {
     setEditingTransaction(transaction);
+    
+    // Verificar se tem splits (rateio)
+    const hasSplits = transaction.splits && transaction.splits.length > 0;
+    const rateios = hasSplits 
+      ? transaction.splits.map((split, index) => ({
+          id: `${split.account_id}-${index}`,
+          account_id: split.account_id,
+          amount: split.amount,
+          percentage: split.percentage
+        }))
+      : [];
+    
     setFormData({
       type: transaction.type,
       description: transaction.description,
@@ -828,8 +874,8 @@ export default function Lancamentos() {
       recurrence_count: transaction.recurrence_count?.toString() || "",
       recurrence_end_date: transaction.recurrence_end_date ? new Date(transaction.recurrence_end_date) : undefined,
       observations: transaction.observations || "",
-      temRateio: false, // Por enquanto não implementado
-      rateios: []
+      temRateio: hasSplits,
+      rateios: rateios
     });
     setIsDialogOpen(true);
   };

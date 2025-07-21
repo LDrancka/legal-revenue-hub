@@ -273,7 +273,7 @@ export function generateReceipt(data: ReceiptData): void {
     doc.setFontSize(10);
     doc.text(cidadeData, pageWidth - margin, currentY, { align: 'right' });
     
-    currentY += 15; // Espaço entre cidade/data e linha de assinatura
+    currentY += 20; // Espaço aumentado entre cidade/data e linha de assinatura
     
     // Linha para assinatura
     const lineY = currentY;
