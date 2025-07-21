@@ -1088,114 +1088,141 @@ export default function Lancamentos() {
         </Card>
 
         {/* Lista de Lançamentos */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Lançamentos Registrados</CardTitle>
-            <CardDescription>
-              {filteredTransactions.length} lançamento(s) encontrado(s)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Valor</TableHead>
-                  <TableHead>Conta</TableHead>
-                  <TableHead>Caso</TableHead>
-                  <TableHead>Vencimento</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTransactions.map((transaction) => (
-                  <TableRow key={transaction.id}>
-                    <TableCell>
-                      <div className="flex items-center">
+        <div className="space-y-4">
+          {filteredTransactions.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center py-8">
+                  <Receipt className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">
+                    Nenhum lançamento encontrado
+                  </h3>
+                  <p className="text-muted-foreground mb-4">
+                    Comece criando seu primeiro lançamento financeiro
+                  </p>
+                  <Button onClick={() => setIsDialogOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Criar Primeiro Lançamento
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            filteredTransactions.map((transaction) => (
+              <Card key={transaction.id} className="hover:shadow-md transition-shadow">
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="flex items-center gap-2 text-lg">
                         {transaction.type === "receita" ? (
-                          <ArrowUpCircle className="h-4 w-4 mr-2 text-green-500" />
+                          <ArrowUpCircle className="h-5 w-5 text-green-600" />
                         ) : (
-                          <ArrowDownCircle className="h-4 w-4 mr-2 text-red-500" />
+                          <ArrowDownCircle className="h-5 w-5 text-red-600" />
                         )}
-                        <span className="capitalize">{transaction.type}</span>
+                        {transaction.description}
                         {transaction.is_recurring && (
-                          <Repeat className="h-3 w-3 ml-1 text-muted-foreground" />
+                          <Repeat className="h-4 w-4 ml-1 text-muted-foreground" />
+                        )}
+                      </CardTitle>
+                      <div className="flex items-center gap-4 mt-2 flex-wrap">
+                        <Badge 
+                          variant={transaction.status === "pago" ? "default" : "outline"}
+                          className={transaction.status === "pago" ? "status-paid" : "status-pending"}
+                        >
+                          {transaction.status === "pago" ? "Pago" : "Pendente"}
+                        </Badge>
+                        <Badge variant={transaction.type === 'receita' ? 'default' : 'secondary'}>
+                          {transaction.type === 'receita' ? 'Receita' : 'Despesa'}
+                        </Badge>
+                        {transaction.case_id && (
+                          <Badge variant="outline">
+                            <Building className="h-3 w-3 mr-1" />
+                            {getCaseName(transaction.case_id)}
+                          </Badge>
                         )}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{transaction.description}</div>
-                        {transaction.observations && (
-                          <div className="text-xs text-muted-foreground">
-                            {transaction.observations}
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className={transaction.type === "receita" ? "text-green-600" : "text-red-600"}>
+                    </div>
+                    
+                    <div className="text-right">
+                      <div className={`text-2xl font-bold ${
+                        transaction.type === 'receita' ? 'text-green-600' : 'text-red-600'
+                      }`}>
                         {formatCurrency(transaction.amount)}
-                      </span>
-                    </TableCell>
-                    <TableCell>{getAccountName(transaction.account_id)}</TableCell>
-                    <TableCell>{getCaseName(transaction.case_id)}</TableCell>
-                    <TableCell>
-                      {format(new Date(transaction.due_date), "dd/MM/yyyy", { locale: ptBR })}
-                    </TableCell>
-                    <TableCell>
-                      <Badge 
-                        variant={transaction.status === "pago" ? "default" : "outline"}
-                        className={transaction.status === "pago" ? "status-paid" : "status-pending"}
-                      >
-                        {transaction.status === "pago" ? "Pago" : "Pendente"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleEdit(transaction)}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => toggleStatus(transaction)}
-                            className={transaction.status === "pendente" ? "text-green-600" : "text-yellow-600"}
-                          >
-                            <DollarSign className="mr-2 h-4 w-4" />
-                            {transaction.status === "pendente" ? "Marcar como Pago" : "Marcar como Pendente"}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleDelete(transaction.id)}
-                            className="text-red-600"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            {filteredTransactions.length === 0 && (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">
-                  Nenhum lançamento encontrado. Clique em "Novo Lançamento" para começar.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                      </div>
+                    </div>
+                  </div>
+                </CardHeader>
+                
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Vencimento:</span>
+                      <div className="font-medium">
+                        {format(new Date(transaction.due_date), "dd/MM/yyyy", { locale: ptBR })}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Conta:</span>
+                      <div className="font-medium">{getAccountName(transaction.account_id)}</div>
+                    </div>
+                    {transaction.payment_date && (
+                      <div>
+                        <span className="text-muted-foreground">Data Pagamento:</span>
+                        <div className="font-medium">
+                          {format(new Date(transaction.payment_date), "dd/MM/yyyy", { locale: ptBR })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {transaction.observations && (
+                    <div className="mt-4 p-3 bg-muted rounded-lg">
+                      <span className="text-muted-foreground text-sm">Observações:</span>
+                      <div className="text-sm mt-1">{transaction.observations}</div>
+                    </div>
+                  )}
+                  
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleEdit(transaction)}
+                      className="flex items-center gap-1"
+                    >
+                      <Edit className="h-3 w-3" />
+                      Editar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={transaction.status === "pendente" ? "default" : "secondary"}
+                      onClick={() => toggleStatus(transaction)}
+                      className="flex items-center gap-1"
+                    >
+                      <DollarSign className="h-3 w-3" />
+                      {transaction.status === "pendente" ? "Quitar" : "Pendente"}
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem 
+                          onClick={() => handleDelete(transaction.id)}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
           </TabsContent>
 
           <TabsContent value="recorrentes">
