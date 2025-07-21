@@ -388,7 +388,7 @@ export default function Lancamentos() {
         account_id: formData.temRateio ? null : formData.account_id || null,
         case_id: formData.case_id || null,
         due_date: formData.due_date.toISOString().split('T')[0],
-        status: "pendente" as const,
+        status: formData.status as "pendente" | "pago",
         observations: formData.observations || null,
         is_recurring: formData.is_recurring,
         recurrence_frequency: formData.is_recurring && formData.recurrence_frequency ? formData.recurrence_frequency : null,
@@ -465,9 +465,36 @@ export default function Lancamentos() {
             return;
           }
 
+          // Se os lançamentos recorrentes foram criados como "pago", atualizar o saldo da conta
+          if (formData.status === "pago" && formData.account_id && !formData.temRateio) {
+            const balanceChangePerTransaction = formData.type === "receita" 
+              ? parseFloat(formData.amount) 
+              : -parseFloat(formData.amount);
+            
+            const totalBalanceChange = balanceChangePerTransaction * transactions.length;
+
+            // Buscar saldo atual da conta
+            const { data: accountData, error: accountFetchError } = await supabase
+              .from('accounts')
+              .select('balance')
+              .eq('id', formData.account_id)
+              .single();
+
+            if (!accountFetchError && accountData) {
+              const newBalance = Number(accountData.balance) + totalBalanceChange;
+
+              await supabase
+                .from('accounts')
+                .update({ balance: newBalance })
+                .eq('id', formData.account_id);
+            }
+          }
+
           toast({
             title: "Sucesso",
-            description: `${transactions.length} lançamentos recorrentes criados com sucesso`
+            description: formData.status === "pago"
+              ? `${transactions.length} lançamentos recorrentes criados e saldo da conta atualizado com sucesso`
+              : `${transactions.length} lançamentos recorrentes criados com sucesso`
           });
         } else {
           const { error } = await supabase
@@ -484,9 +511,34 @@ export default function Lancamentos() {
             return;
           }
 
+          // Se o lançamento foi criado como "pago", atualizar o saldo da conta
+          if (formData.status === "pago" && formData.account_id && !formData.temRateio) {
+            const balanceChange = formData.type === "receita" 
+              ? parseFloat(formData.amount) 
+              : -parseFloat(formData.amount);
+
+            // Buscar saldo atual da conta
+            const { data: accountData, error: accountFetchError } = await supabase
+              .from('accounts')
+              .select('balance')
+              .eq('id', formData.account_id)
+              .single();
+
+            if (!accountFetchError && accountData) {
+              const newBalance = Number(accountData.balance) + balanceChange;
+
+              await supabase
+                .from('accounts')
+                .update({ balance: newBalance })
+                .eq('id', formData.account_id);
+            }
+          }
+
           toast({
             title: "Sucesso",
-            description: "Lançamento criado com sucesso"
+            description: formData.status === "pago" 
+              ? "Lançamento criado e saldo da conta atualizado com sucesso" 
+              : "Lançamento criado com sucesso"
           });
         }
 
@@ -587,6 +639,26 @@ export default function Lancamentos() {
     paymentAccountId: string | null = null
   ) => {
     try {
+      // Primeiro, buscar os dados da transação para saber se precisa atualizar o saldo
+      const { data: transactionData, error: fetchError } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) {
+        console.error('Erro ao buscar transação:', fetchError);
+        toast({
+          title: "Erro",
+          description: "Erro ao buscar dados da transação",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const oldStatus = transactionData.status;
+
+      // Atualizar o status da transação
       const { error } = await supabase
         .from('transactions')
         .update({
@@ -607,9 +679,65 @@ export default function Lancamentos() {
         return;
       }
 
+      // Atualizar saldo da conta se necessário
+      const accountId = paymentAccountId || transactionData.account_id;
+      
+      if (accountId && oldStatus !== status) {
+        let balanceChange = 0;
+        
+        if (status === "pago" && oldStatus === "pendente") {
+          // Transação foi quitada - somar receita ou subtrair despesa
+          balanceChange = transactionData.type === "receita" 
+            ? Number(transactionData.amount) 
+            : -Number(transactionData.amount);
+        } else if (status === "pendente" && oldStatus === "pago") {
+          // Transação foi desmarcada como paga - reverter operação
+          balanceChange = transactionData.type === "receita" 
+            ? -Number(transactionData.amount) 
+            : Number(transactionData.amount);
+        }
+
+        if (balanceChange !== 0) {
+          // Buscar saldo atual da conta
+          const { data: accountData, error: accountFetchError } = await supabase
+            .from('accounts')
+            .select('balance')
+            .eq('id', accountId)
+            .single();
+
+          if (accountFetchError) {
+            console.error('Erro ao buscar saldo da conta:', accountFetchError);
+            return;
+          }
+
+          const newBalance = Number(accountData.balance) + balanceChange;
+
+          const { error: accountError } = await supabase
+            .from('accounts')
+            .update({ balance: newBalance })
+            .eq('id', accountId);
+
+          if (accountError) {
+            // Se der erro na atualização da conta, reverter a transação
+            await supabase
+              .from('transactions')
+              .update({ status: oldStatus })
+              .eq('id', id);
+
+            console.error('Erro ao atualizar saldo da conta:', accountError);
+            toast({
+              title: "Erro",
+              description: "Erro ao atualizar saldo da conta. Status revertido.",
+              variant: "destructive"
+            });
+            return;
+          }
+        }
+      }
+
       toast({
         title: "Status atualizado",
-        description: status === "pago" ? "Pagamento registrado com sucesso" : "Lançamento marcado como pendente"
+        description: status === "pago" ? "Pagamento registrado e saldo atualizado com sucesso" : "Lançamento marcado como pendente e saldo ajustado"
       });
 
       fetchTransactions();
