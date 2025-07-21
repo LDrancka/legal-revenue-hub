@@ -306,10 +306,19 @@ export default function Lancamentos() {
     
     if (!user) return;
 
+    // Debug para verificar os dados
+    console.log('Dados do formulário:', formData);
+
     if (!formData.type || !formData.description || !formData.amount || (!formData.account_id && !formData.temRateio)) {
+      const missingFields = [];
+      if (!formData.type) missingFields.push('Tipo');
+      if (!formData.description) missingFields.push('Descrição');
+      if (!formData.amount) missingFields.push('Valor');
+      if (!formData.account_id && !formData.temRateio) missingFields.push('Conta ou Rateio');
+      
       toast({
         title: "Erro",
-        description: "Preencha os campos obrigatórios: Tipo, Descrição, Valor e Conta (ou configure rateio)",
+        description: `Preencha os campos obrigatórios: ${missingFields.join(', ')}`,
         variant: "destructive"
       });
       return;
