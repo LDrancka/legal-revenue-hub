@@ -40,6 +40,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import RecurringTransactions from "@/components/RecurringTransactions";
 import { CategoriesDialog } from "@/components/CategoriesDialog";
+import { FileUpload } from "@/components/FileUpload";
 
 interface Transaction {
   id: string;
@@ -109,6 +110,9 @@ export default function Lancamentos() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedTipo, setSelectedTipo] = useState<string>("todos");
   const [selectedStatus, setSelectedStatus] = useState<string>("todos");
+  const [clientFilter, setClientFilter] = useState<string>("");
+  const [accountFilter, setAccountFilter] = useState<string>("");
+  const [valueFilter, setValueFilter] = useState<string>("");
   const [clientSearch, setClientSearch] = useState("");
   const [accountSearch, setAccountSearch] = useState("");
   const [rateioAccountSearch, setRateioAccountSearch] = useState("");
@@ -119,6 +123,14 @@ export default function Lancamentos() {
   const [paymentDate, setPaymentDate] = useState<Date>();
   const [paymentObservations, setPaymentObservations] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
+  const [attachments, setAttachments] = useState<Array<{
+    id: string;
+    file_name: string;
+    file_path: string;
+    file_size: number;
+    mime_type: string;
+    created_at: string;
+  }>>([]);
   
   // Estados para confirmação de desfazer quitação
   const [isUndoDialogOpen, setIsUndoDialogOpen] = useState(false);
@@ -293,8 +305,22 @@ export default function Lancamentos() {
   };
 
   const filteredTransactions = transactions.filter((transaction) => {
+    // Filtro por descrição
     const matchesSearch = transaction.description.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Filtro por tipo
     const matchesTipo = selectedTipo === "todos" || transaction.type === selectedTipo;
+    
+    // Filtro por cliente
+    const matchesClient = !clientFilter || (transaction.client_id && 
+      getClientName(transaction.client_id).toLowerCase().includes(clientFilter.toLowerCase()));
+    
+    // Filtro por conta
+    const matchesAccount = !accountFilter || (transaction.account_id && 
+      getAccountName(transaction.account_id, transaction.splits).toLowerCase().includes(accountFilter.toLowerCase()));
+    
+    // Filtro por valor
+    const matchesValue = !valueFilter || transaction.amount.toString().includes(valueFilter);
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -310,7 +336,7 @@ export default function Lancamentos() {
       matchesStatus = transaction.status === selectedStatus;
     }
     
-    return matchesSearch && matchesTipo && matchesStatus;
+    return matchesSearch && matchesTipo && matchesStatus && matchesClient && matchesAccount && matchesValue;
   });
 
   const formatCurrency = (value: number, isExpense: boolean = false) => {
@@ -1422,6 +1448,7 @@ export default function Lancamentos() {
       rateios: [{ id: Date.now().toString(), account_id: "", amount: 0, percentage: 100 }]
     });
     setEditingTransaction(null);
+    setAttachments([]); // Limpar anexos
     setIsDialogOpen(false);
   };
 
@@ -2116,6 +2143,16 @@ export default function Lancamentos() {
                     onChange={(e) => setFormData({...formData, observations: e.target.value})}
                   />
                 </div>
+                
+                {/* Componente para upload de anexos */}
+                <div className="space-y-2">
+                  <Label>Anexos/Comprovantes</Label>
+                  <FileUpload
+                    transactionId={editingTransaction?.id}
+                    attachments={attachments}
+                    onAttachmentsChange={setAttachments}
+                  />
+                </div>
 
                 <div className="flex justify-end space-x-2">
                   <Button
@@ -2148,8 +2185,9 @@ export default function Lancamentos() {
             <CardTitle className="text-lg">Filtros</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-4">
-              <div className="flex-1 min-w-[200px]">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Buscar por descrição</Label>
                 <div className="relative">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -2161,28 +2199,82 @@ export default function Lancamentos() {
                 </div>
               </div>
               
-              <Select value={selectedTipo} onValueChange={setSelectedTipo}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os tipos</SelectItem>
-                  <SelectItem value="receita">Receitas</SelectItem>
-                  <SelectItem value="despesa">Despesas</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Label>Filtrar por cliente</Label>
+                <Input
+                  placeholder="Nome do cliente..."
+                  value={clientFilter}
+                  onChange={(e) => setClientFilter(e.target.value)}
+                />
+              </div>
               
-              <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos status</SelectItem>
-                  <SelectItem value="pendente">Pendentes</SelectItem>
-                  <SelectItem value="quitado">Quitados</SelectItem>
-                  <SelectItem value="inadimplente">Inadimplentes</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Label>Filtrar por conta</Label>
+                <Input
+                  placeholder="Nome da conta..."
+                  value={accountFilter}
+                  onChange={(e) => setAccountFilter(e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Filtrar por valor</Label>
+                <Input
+                  placeholder="Ex: 1500..."
+                  value={valueFilter}
+                  onChange={(e) => setValueFilter(e.target.value)}
+                  type="number"
+                  step="0.01"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select value={selectedTipo} onValueChange={setSelectedTipo}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos os tipos</SelectItem>
+                    <SelectItem value="receita">Receitas</SelectItem>
+                    <SelectItem value="despesa">Despesas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos status</SelectItem>
+                    <SelectItem value="pendente">Pendentes</SelectItem>
+                    <SelectItem value="quitado">Quitados</SelectItem>
+                    <SelectItem value="inadimplente">Inadimplentes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            {/* Botão para limpar filtros */}
+            <div className="mt-4 flex justify-end">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  setSearchTerm("");
+                  setClientFilter("");
+                  setAccountFilter("");
+                  setValueFilter("");
+                  setSelectedTipo("todos");
+                  setSelectedStatus("todos");
+                }}
+              >
+                <Filter className="h-4 w-4 mr-2" />
+                Limpar Filtros
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -2485,7 +2577,8 @@ export default function Lancamentos() {
                 />
               </div>
 
-              <div className="flex justify-end space-x-2">
+                
+                <div className="flex justify-end space-x-2">
                 <Button
                   type="button"
                   variant="outline"
