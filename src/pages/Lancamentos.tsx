@@ -50,7 +50,7 @@ interface Transaction {
   client_id?: string;
   category_id?: string;
   due_date: string;
-  status: "pendente" | "pago";
+  status: "pendente" | "quitado";
   payment_date?: string;
   payment_account_id?: string;
   payment_observations?: string;
@@ -159,7 +159,7 @@ export default function Lancamentos() {
     case_id: "",
     client_id: "",
     category_id: "",
-    status: "pendente" as "pendente" | "pago" | "atrasado",
+    status: "pendente" as "pendente" | "quitado" | "atrasado",
     due_date: new Date(),
     is_recurring: false,
     recurrence_frequency: "" as "mensal" | "bimestral" | "trimestral" | "semestral" | "anual" | "",
@@ -301,7 +301,7 @@ export default function Lancamentos() {
   };
 
   const isOverdue = (dueDate: string, status: string) => {
-    if (status === "pago") return false;
+    if (status === "quitado") return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const due = new Date(dueDate);
@@ -310,7 +310,7 @@ export default function Lancamentos() {
   };
 
   const getStatusDisplay = (transaction: Transaction) => {
-    if (transaction.status === "pago") return { text: "Pago", variant: "default" as const, className: "text-green-700 bg-green-100" };
+    if (transaction.status === "quitado") return { text: "Quitado", variant: "default" as const, className: "text-sky-700 bg-sky-100" };
     if (isOverdue(transaction.due_date, transaction.status)) {
       return { text: "INADIMPLENTE", variant: "destructive" as const, className: "text-red-700 bg-red-100" };
     }
@@ -444,7 +444,7 @@ export default function Lancamentos() {
         client_id: formData.client_id || null,
         category_id: formData.category_id || null,
         due_date: formData.due_date.toISOString().split('T')[0],
-        status: formData.status as "pendente" | "pago",
+        status: formData.status as "pendente" | "quitado",
         observations: formData.observations || null,
         is_recurring: formData.is_recurring,
         recurrence_frequency: formData.is_recurring && formData.recurrence_frequency ? formData.recurrence_frequency : null,
@@ -542,7 +542,7 @@ export default function Lancamentos() {
             }
 
             // Se os lançamentos recorrentes foram criados como "pago", atualizar saldos das contas do rateio
-            if (formData.status === "pago") {
+            if (formData.status === "quitado") {
               for (const rateio of formData.rateios) {
                 const balanceChangePerTransaction = formData.type === "receita" 
                   ? rateio.amount 
@@ -567,7 +567,7 @@ export default function Lancamentos() {
                 }
               }
             }
-          } else if (formData.status === "pago" && formData.account_id && !formData.temRateio) {
+          } else if (formData.status === "quitado" && formData.account_id && !formData.temRateio) {
             // Se não tem rateio, atualizar saldo da conta única
             const balanceChangePerTransaction = formData.type === "receita" 
               ? parseFloat(formData.amount) 
@@ -594,7 +594,7 @@ export default function Lancamentos() {
 
           toast({
             title: "Sucesso",
-            description: formData.status === "pago"
+            description: formData.status === "quitado"
               ? `${transactions.length} lançamentos recorrentes criados e saldo da conta atualizado com sucesso`
               : `${transactions.length} lançamentos recorrentes criados com sucesso`
           });
@@ -614,7 +614,7 @@ export default function Lancamentos() {
           }
 
           // Se o lançamento foi criado como "pago", atualizar o saldo da conta
-          if (formData.status === "pago" && formData.account_id && !formData.temRateio) {
+          if (formData.status === "quitado" && formData.account_id && !formData.temRateio) {
             const balanceChange = formData.type === "receita" 
               ? parseFloat(formData.amount) 
               : -parseFloat(formData.amount);
@@ -638,7 +638,7 @@ export default function Lancamentos() {
 
           toast({
             title: "Sucesso",
-            description: formData.status === "pago" 
+            description: formData.status === "quitado" 
               ? "Lançamento criado e saldo da conta atualizado com sucesso" 
               : "Lançamento criado com sucesso"
           });
@@ -680,7 +680,7 @@ export default function Lancamentos() {
             }
 
             // Se o lançamento foi criado como "pago", atualizar saldos das contas do rateio
-            if (formData.status === "pago") {
+            if (formData.status === "quitado") {
               for (const rateio of formData.rateios) {
                 const balanceChange = formData.type === "receita" 
                   ? rateio.amount 
@@ -900,7 +900,7 @@ export default function Lancamentos() {
 
   const updateTransactionStatus = async (
     id: string, 
-    status: "pendente" | "pago",
+    status: "pendente" | "quitado",
     paymentDate: string | null = null,
     paymentObservations: string | null = null,
     paymentAccountId: string | null = null
@@ -929,7 +929,7 @@ export default function Lancamentos() {
 
       toast({
         title: "Status atualizado",
-        description: status === "pago" ? "Pagamento registrado com sucesso" : "Lançamento marcado como pendente"
+        description: status === "quitado" ? "Pagamento registrado com sucesso" : "Lançamento marcado como pendente"
       });
 
       // Recalcular saldos automaticamente após qualquer mudança
@@ -970,7 +970,7 @@ export default function Lancamentos() {
 
     updateTransactionStatus(
       paymentTransaction.id,
-      "pago",
+      "quitado",
       paymentDate.toISOString().split('T')[0],
       paymentObservations,
       paymentAccount
@@ -1095,7 +1095,7 @@ export default function Lancamentos() {
         
       await updateTransactionStatus(
         partialTransaction.id,
-        "pago",
+        "quitado",
         partialPaymentDate.toISOString().split('T')[0],
         `Pagamento parcial: ${formatCurrency(partialValue)}. ${partialObservations}`,
         paymentAccountId
@@ -1280,7 +1280,7 @@ export default function Lancamentos() {
         .from('transactions')
         .select('*')
         .eq('user_id', user?.id)
-        .eq('status', 'pago');
+        .eq('status', 'quitado');
 
       if (error) {
         console.error('Erro ao buscar transações pagas:', error);
@@ -1345,7 +1345,7 @@ export default function Lancamentos() {
           )
         `)
         .eq('transactions.user_id', user?.id)
-        .eq('transactions.status', 'pago');
+        .eq('transactions.status', 'quitado');
 
       if (!splitsError && splits) {
         for (const split of splits) {
@@ -1627,13 +1627,13 @@ export default function Lancamentos() {
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="status">Status *</Label>
-                    <Select value={formData.status} onValueChange={(value: "pendente" | "pago" | "atrasado") => setFormData({...formData, status: value})}>
+                    <Select value={formData.status} onValueChange={(value: "pendente" | "quitado" | "atrasado") => setFormData({...formData, status: value})}>
                       <SelectTrigger>
                         <SelectValue placeholder="Pendente" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pendente">Pendente</SelectItem>
-                        <SelectItem value="pago">Pago</SelectItem>
+                        <SelectItem value="quitado">Quitado</SelectItem>
                         <SelectItem value="atrasado">Atrasado</SelectItem>
                       </SelectContent>
                     </Select>
