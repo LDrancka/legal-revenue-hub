@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +35,7 @@ import { ptBR } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import RecurringTransactions from "@/components/RecurringTransactions";
 
 interface Transaction {
   id: string;
@@ -807,7 +809,14 @@ export default function Lancamentos() {
           </Dialog>
         </div>
 
-        {/* Filters */}
+        <Tabs defaultValue="lancamentos" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="lancamentos">Lançamentos</TabsTrigger>
+            <TabsTrigger value="recorrentes">Recorrentes</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="lancamentos" className="space-y-6">
+            {/* Filters */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Filtros</CardTitle>
@@ -960,6 +969,12 @@ export default function Lancamentos() {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+
+          <TabsContent value="recorrentes">
+            <RecurringTransactions />
+          </TabsContent>
+        </Tabs>
 
         {/* Dialog de Pagamento */}
         <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
