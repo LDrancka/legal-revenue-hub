@@ -84,11 +84,11 @@ const Settings = () => {
     try {
       const { error } = await supabase
         .from('profiles')
-        .upsert({
-          user_id: user?.id || '',
+        .update({
           display_name: profileData.displayName || null,
           avatar_url: profileData.avatarUrl || null,
-        });
+        })
+        .eq('user_id', user?.id);
 
       if (error) throw error;
 
