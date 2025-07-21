@@ -113,6 +113,18 @@ export default function Lancamentos() {
   const [paymentDate, setPaymentDate] = useState<Date>();
   const [paymentObservations, setPaymentObservations] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
+  
+  // Estados para confirmação de desfazer quitação
+  const [isUndoDialogOpen, setIsUndoDialogOpen] = useState(false);
+  const [undoTransaction, setUndoTransaction] = useState<Transaction | null>(null);
+  
+  // Estados para quitação parcial
+  const [isPartialPaymentDialogOpen, setIsPartialPaymentDialogOpen] = useState(false);
+  const [partialTransaction, setPartialTransaction] = useState<Transaction | null>(null);
+  const [partialAmount, setPartialAmount] = useState("");
+  const [partialPaymentDate, setPartialPaymentDate] = useState<Date>();
+  const [partialPaymentAccount, setPartialPaymentAccount] = useState("");
+  const [partialObservations, setPartialObservations] = useState("");
 
   // Estados para formulário de cobrança Asaas
   const [isAsaasDialogOpen, setIsAsaasDialogOpen] = useState(false);
@@ -626,8 +638,9 @@ export default function Lancamentos() {
       setPaymentAccount(transaction.account_id || "");
       setIsPaymentDialogOpen(true);
     } else {
-      // Marcar como pendente novamente
-      updateTransactionStatus(transaction.id, "pendente", null, null, null);
+      // Abrir modal de confirmação para desfazer quitação
+      setUndoTransaction(transaction);
+      setIsUndoDialogOpen(true);
     }
   };
 
@@ -790,6 +803,101 @@ export default function Lancamentos() {
 
     setIsPaymentDialogOpen(false);
     setPaymentTransaction(null);
+  };
+
+  const handleUndoPayment = () => {
+    if (undoTransaction) {
+      updateTransactionStatus(undoTransaction.id, "pendente", null, null, null);
+    }
+    setIsUndoDialogOpen(false);
+    setUndoTransaction(null);
+  };
+
+  const openPartialPaymentDialog = (transaction: Transaction) => {
+    setPartialTransaction(transaction);
+    setPartialAmount("");
+    setPartialPaymentDate(new Date());
+    setPartialPaymentAccount(transaction.account_id || "");
+    setPartialObservations("");
+    setIsPartialPaymentDialogOpen(true);
+  };
+
+  const handlePartialPaymentSubmit = async () => {
+    if (!partialTransaction || !partialPaymentDate || !partialAmount || !partialPaymentAccount) {
+      toast({
+        title: "Erro",
+        description: "Preencha todos os campos obrigatórios",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const partialValue = parseFloat(partialAmount);
+    const remainingValue = partialTransaction.amount - partialValue;
+
+    if (partialValue <= 0 || partialValue >= partialTransaction.amount) {
+      toast({
+        title: "Erro",
+        description: "Valor parcial deve ser maior que zero e menor que o valor total",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // 1. Marcar a transação original como paga com valor parcial
+      await updateTransactionStatus(
+        partialTransaction.id,
+        "pago",
+        partialPaymentDate.toISOString().split('T')[0],
+        `Pagamento parcial: ${formatCurrency(partialValue)}. ${partialObservations}`,
+        partialPaymentAccount
+      );
+
+      // 2. Atualizar o valor da transação original para o valor pago
+      await supabase
+        .from('transactions')
+        .update({ amount: partialValue })
+        .eq('id', partialTransaction.id);
+
+      // 3. Criar nova transação com valor restante
+      const newTransaction = {
+        type: partialTransaction.type,
+        description: `${partialTransaction.description} - Saldo restante`,
+        amount: remainingValue,
+        account_id: partialTransaction.account_id,
+        case_id: partialTransaction.case_id,
+        due_date: partialPaymentDate.toISOString().split('T')[0],
+        status: "pendente" as const,
+        observations: `Valor restante de quitação parcial. Valor original: ${formatCurrency(partialTransaction.amount)}`,
+        is_recurring: false,
+        user_id: user?.id
+      };
+
+      const { error: insertError } = await supabase
+        .from('transactions')
+        .insert(newTransaction);
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      toast({
+        title: "Sucesso",
+        description: `Quitação parcial registrada. Nova parcela criada para ${formatCurrency(remainingValue)}`
+      });
+
+      fetchTransactions();
+      setIsPartialPaymentDialogOpen(false);
+      setPartialTransaction(null);
+    } catch (error) {
+      console.error('Erro na quitação parcial:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao processar quitação parcial",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleAsaasSubmit = async (e: React.FormEvent) => {
@@ -1729,11 +1837,11 @@ export default function Lancamentos() {
                 {/* Cabeçalho da Tabela */}
                 <div className="bg-muted/30 border-b px-4 py-3 grid grid-cols-12 gap-2 text-sm font-medium text-muted-foreground">
                   <div className="col-span-3">Descrição</div>
-                  <div className="col-span-1 text-center">Status</div>
+                  <div className="col-span-2 text-center">Status</div>
                   <div className="col-span-1 text-center">Tipo</div>
                   <div className="col-span-1 text-center">Vencimento</div>
                   <div className="col-span-2 text-center">Conta</div>
-                  <div className="col-span-2 text-center">Caso/Cliente</div>
+                  <div className="col-span-1 text-center">Caso/Cliente</div>
                   <div className="col-span-1 text-right">Valor</div>
                   <div className="col-span-1 text-center">Ações</div>
                 </div>
@@ -1767,9 +1875,11 @@ export default function Lancamentos() {
                         </div>
 
                         {/* Status */}
-                        <div className="col-span-1 text-center">
+                        <div className="col-span-2 text-center">
                           <Badge className={statusInfo.className} variant="outline">
-                            {statusInfo.text}
+                            <span className="text-xs whitespace-nowrap">
+                              {statusInfo.text}
+                            </span>
                           </Badge>
                         </div>
 
@@ -1801,7 +1911,7 @@ export default function Lancamentos() {
                         </div>
 
                         {/* Caso/Cliente */}
-                        <div className="col-span-2 text-center min-w-0">
+                        <div className="col-span-1 text-center min-w-0">
                           {transaction.case_id && (
                             <Badge variant="outline" className="text-xs">
                               <Building className="h-3 w-3 mr-1" />
@@ -1837,6 +1947,7 @@ export default function Lancamentos() {
                               variant={transaction.status === "pendente" ? "default" : "secondary"}
                               onClick={() => toggleStatus(transaction)}
                               className="h-7 w-7 p-0"
+                              title={transaction.status === "pendente" ? "Quitar" : "Desfazer quitação"}
                             >
                               <DollarSign className="h-3 w-3" />
                             </Button>
@@ -1847,6 +1958,14 @@ export default function Lancamentos() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                {transaction.status === "pendente" && (
+                                  <DropdownMenuItem 
+                                    onClick={() => openPartialPaymentDialog(transaction)}
+                                  >
+                                    <DollarSign className="mr-2 h-4 w-4" />
+                                    Quitação Parcial
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem 
                                   onClick={() => handleDelete(transaction.id)}
                                   className="text-red-600"
@@ -1949,6 +2068,129 @@ export default function Lancamentos() {
                 </Button>
                 <Button onClick={handlePaymentSubmit}>
                   Confirmar {paymentTransaction?.type === "receita" ? "Recebimento" : "Pagamento"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog de Confirmação para Desfazer Quitação */}
+        <AlertDialog open={isUndoDialogOpen} onOpenChange={setIsUndoDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Desfazer {undoTransaction?.type === "receita" ? "Recebimento" : "Pagamento"}?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta ação irá marcar o lançamento como pendente novamente e ajustar o saldo da conta. 
+                <br /><br />
+                <strong>Lançamento:</strong> {undoTransaction?.description}<br />
+                <strong>Valor:</strong> {formatCurrency(undoTransaction?.amount || 0)}<br />
+                <strong>Conta:</strong> {getAccountName(undoTransaction?.payment_account_id || undoTransaction?.account_id)}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleUndoPayment}>
+                Confirmar Desfazer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Dialog de Quitação Parcial */}
+        <Dialog open={isPartialPaymentDialogOpen} onOpenChange={setIsPartialPaymentDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                Quitação Parcial - {partialTransaction?.type === "receita" ? "Recebimento" : "Pagamento"}
+              </DialogTitle>
+              <DialogDescription>
+                Registre um pagamento parcial. O valor restante será criado como novo lançamento.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div>
+                <Label>Lançamento Original</Label>
+                <div className="text-sm text-muted-foreground bg-muted p-3 rounded">
+                  <strong>{partialTransaction?.description}</strong><br />
+                  Valor total: {formatCurrency(partialTransaction?.amount || 0)}<br />
+                  Conta: {getAccountName(partialTransaction?.account_id)}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Valor a Quitar *</Label>
+                <Input
+                  type="number"
+                  placeholder="0,00"
+                  value={partialAmount}
+                  onChange={(e) => setPartialAmount(e.target.value)}
+                />
+                {partialAmount && partialTransaction && (
+                  <div className="text-sm text-muted-foreground">
+                    Valor restante: {formatCurrency((partialTransaction.amount || 0) - parseFloat(partialAmount || "0"))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Data do {partialTransaction?.type === "receita" ? "Recebimento" : "Pagamento"} *</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {partialPaymentDate ? format(partialPaymentDate, "PPP", { locale: ptBR }) : "Selecione a data"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={partialPaymentDate}
+                      onSelect={setPartialPaymentDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Conta para {partialTransaction?.type === "receita" ? "Recebimento" : "Pagamento"} *</Label>
+                <Select value={partialPaymentAccount} onValueChange={setPartialPaymentAccount}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a conta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Observações</Label>
+                <Textarea
+                  placeholder="Observações sobre a quitação parcial..."
+                  value={partialObservations}
+                  onChange={(e) => setPartialObservations(e.target.value)}
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsPartialPaymentDialogOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button onClick={handlePartialPaymentSubmit}>
+                  Confirmar Quitação Parcial
                 </Button>
               </div>
             </div>
