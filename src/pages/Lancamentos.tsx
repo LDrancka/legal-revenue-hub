@@ -2503,7 +2503,7 @@ export default function Lancamentos() {
 
         {/* Dialog de Quitação Parcial */}
         <Dialog open={isPartialPaymentDialogOpen} onOpenChange={setIsPartialPaymentDialogOpen}>
-          <DialogContent>
+          <DialogContent className="max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 Quitação Parcial - {partialTransaction?.type === "receita" ? "Recebimento" : "Pagamento"}
