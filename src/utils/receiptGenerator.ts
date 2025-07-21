@@ -257,11 +257,11 @@ export function generateReceipt(data: ReceiptData): void {
     }
     
     doc.setFontSize(10);
-    currentY += 15;
+    currentY += 25; // Aumentado de 15 para 25 para dar mais espaço
     
     // Verificar espaço para cidade/data
-    if (currentY + 25 > maxYForVia(startY)) {
-      currentY = maxYForVia(startY) - 25;
+    if (currentY + 25 > maxYLimit) {
+      currentY = maxYLimit - 25;
     }
     
     // Cidade e data alinhados à direita
