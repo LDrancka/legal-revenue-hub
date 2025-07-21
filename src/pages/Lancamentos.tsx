@@ -951,8 +951,10 @@ export default function Lancamentos() {
         type: partialTransaction.type,
         description: `${partialTransaction.description} - Saldo restante`,
         amount: remainingValue,
-        account_id: partialTransaction.account_id,
+        account_id: partialTransaction.splits && partialTransaction.splits.length > 0 ? null : partialTransaction.account_id,
         case_id: partialTransaction.case_id,
+        client_id: partialTransaction.client_id, // Copiar o cliente
+        category_id: partialTransaction.category_id, // Copiar a categoria
         due_date: newDueDate.toISOString().split('T')[0],
         status: "pendente" as const,
         observations: `Valor restante de quitação parcial. Valor original: ${formatCurrency(partialTransaction.amount)}`,
@@ -960,12 +962,36 @@ export default function Lancamentos() {
         user_id: user?.id
       };
 
-      const { error: insertError } = await supabase
+      const { data: newTransactionData, error: insertError } = await supabase
         .from('transactions')
-        .insert(newTransaction);
+        .insert(newTransaction)
+        .select('id')
+        .single();
 
       if (insertError) {
         throw insertError;
+      }
+
+      // 4. Se a transação original tem rateio, criar splits proporcionais para a nova transação
+      if (partialTransaction.splits && partialTransaction.splits.length > 0 && newTransactionData) {
+        const splitsToInsert = partialTransaction.splits.map(split => {
+          const proportionalAmount = (split.amount / partialTransaction.amount) * remainingValue;
+          return {
+            transaction_id: newTransactionData.id,
+            account_id: split.account_id,
+            amount: proportionalAmount,
+            percentage: split.percentage
+          };
+        });
+
+        const { error: splitsError } = await supabase
+          .from('transaction_splits')
+          .insert(splitsToInsert);
+
+        if (splitsError) {
+          console.error('Erro ao criar splits para nova transação:', splitsError);
+          throw splitsError;
+        }
       }
 
       toast({
