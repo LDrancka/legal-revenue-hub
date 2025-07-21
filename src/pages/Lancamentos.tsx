@@ -1618,6 +1618,17 @@ export default function Lancamentos() {
     });
     setEditingTransaction(null);
     setAttachments([]); // Limpar anexos
+    
+    // Limpar dados de transferência/PIX
+    setPaymentMethod("");
+    setAccountData("");
+    setPixKey("");
+    setBeneficiaryName("");
+    setPartialPaymentMethod("");
+    setPartialAccountData("");
+    setPartialPixKey("");
+    setPartialBeneficiaryName("");
+    
     setIsDialogOpen(false);
   };
 
