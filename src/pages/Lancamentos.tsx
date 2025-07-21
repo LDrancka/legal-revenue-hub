@@ -1033,7 +1033,7 @@ export default function Lancamentos() {
     }
   };
 
-  const handlePaymentSubmit = () => {
+  const handlePaymentSubmit = async () => {
     if (!paymentDate || !paymentTransaction) {
       toast({
         title: "Erro",
@@ -1074,6 +1074,13 @@ export default function Lancamentos() {
         : undefined;
       const accountName = getAccountName(paymentAccount);
 
+      // Buscar dados do escritório
+      const { data: officeData } = await supabase
+        .from('office_settings')
+        .select('*')
+        .eq('user_id', user?.id)
+        .maybeSingle();
+
       generateReceipt({
         transactionId: paymentTransaction.id,
         description: paymentTransaction.description,
@@ -1090,7 +1097,10 @@ export default function Lancamentos() {
         paymentMethod,
         accountData,
         pixKey,
-        beneficiaryName
+        beneficiaryName,
+        officeOwnerName: officeData?.owner_name,
+        officeOwnerDocument: officeData?.owner_document,
+        officeDocumentType: officeData?.document_type as 'cpf' | 'cnpj'
       });
     }
 
@@ -1317,6 +1327,13 @@ export default function Lancamentos() {
         : undefined;
       const accountName = getAccountName(paymentAccountId);
 
+      // Buscar dados do escritório
+      const { data: officeData } = await supabase
+        .from('office_settings')
+        .select('*')
+        .eq('user_id', user?.id)
+        .maybeSingle();
+
       generateReceipt({
         transactionId: partialTransaction.id,
         description: partialTransaction.description,
@@ -1334,7 +1351,10 @@ export default function Lancamentos() {
         paymentMethod: partialPaymentMethod,
         accountData: partialAccountData,
         pixKey: partialPixKey,
-        beneficiaryName: partialBeneficiaryName
+        beneficiaryName: partialBeneficiaryName,
+        officeOwnerName: officeData?.owner_name,
+        officeOwnerDocument: officeData?.owner_document,
+        officeDocumentType: officeData?.document_type as 'cpf' | 'cnpj'
       });
     }
 

@@ -182,6 +182,36 @@ export type Database = {
         }
         Relationships: []
       }
+      office_settings: {
+        Row: {
+          created_at: string
+          document_type: string | null
+          id: string
+          owner_document: string | null
+          owner_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_type?: string | null
+          id?: string
+          owner_document?: string | null
+          owner_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          document_type?: string | null
+          id?: string
+          owner_document?: string | null
+          owner_name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null

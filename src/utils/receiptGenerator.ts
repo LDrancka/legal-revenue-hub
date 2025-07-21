@@ -19,6 +19,9 @@ interface ReceiptData {
   accountData?: string;
   pixKey?: string;
   beneficiaryName?: string;
+  officeOwnerName?: string;
+  officeOwnerDocument?: string;
+  officeDocumentType?: 'cpf' | 'cnpj';
 }
 
 // Função para converter número em extenso
@@ -310,14 +313,45 @@ export function generateReceipt(data: ReceiptData): void {
     doc.line(margin + 30, currentY, pageWidth - margin - 30, currentY);
     currentY += 6;
     
-    // Nome do assinante
-    const signataryName = data.type === 'receita' 
-      ? (data.userDisplayName || 'Assinatura') 
-      : (data.clientName || 'Assinatura');
-    
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text(signataryName, pageWidth / 2, currentY, { align: 'center' });
+    // Nome do assinante e dados do escritório
+    if (data.officeOwnerName) {
+      // Se há dados do escritório, mostrar as informações do escritório
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      
+      // Linha 1: Nome/Razão Social
+      doc.text(data.officeOwnerName.toUpperCase(), pageWidth / 2, currentY, { align: 'center' });
+      currentY += 6;
+      
+      // Linha 2: CPF/CNPJ
+      if (data.officeOwnerDocument) {
+        const documentLabel = data.officeDocumentType === 'cpf' ? 'CPF' : 'CNPJ';
+        doc.text(`${documentLabel}: ${data.officeOwnerDocument}`, pageWidth / 2, currentY, { align: 'center' });
+        currentY += 8;
+      }
+      
+      // Linha 3: "Por:" e nome do usuário
+      doc.setFont("helvetica", "normal");
+      const porTexto = "Por: ";
+      const userSignature = data.userDisplayName || 'Usuário';
+      
+      const porWidth = doc.getTextWidth(porTexto);
+      const totalWidth = porWidth + doc.getTextWidth(userSignature);
+      const startX = (pageWidth - totalWidth) / 2;
+      
+      doc.text(porTexto, startX, currentY);
+      doc.setFont("helvetica", "bold");
+      doc.text(userSignature, startX + porWidth, currentY);
+    } else {
+      // Formato original quando não há dados do escritório
+      const signataryName = data.type === 'receita' 
+        ? (data.userDisplayName || 'Assinatura') 
+        : (data.clientName || 'Assinatura');
+      
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text(signataryName, pageWidth / 2, currentY, { align: 'center' });
+    }
   };
   
   // Gerar primeira via

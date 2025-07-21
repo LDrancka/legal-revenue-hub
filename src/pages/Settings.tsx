@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
-import { User, Mail, Lock, Save, UserCircle } from "lucide-react";
+import { User, Mail, Lock, Save, UserCircle, Building } from "lucide-react";
 
 interface Profile {
   id: string;
@@ -19,12 +20,23 @@ interface Profile {
   updated_at: string;
 }
 
+interface OfficeSettings {
+  id: string;
+  user_id: string;
+  owner_name: string | null;
+  owner_document: string | null;
+  document_type: 'cpf' | 'cnpj' | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const Settings = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [officeSettings, setOfficeSettings] = useState<OfficeSettings | null>(null);
   const [passwordData, setPasswordData] = useState({
     currentPassword: "",
     newPassword: "",
@@ -36,6 +48,11 @@ const Settings = () => {
   const [profileData, setProfileData] = useState({
     displayName: "",
     avatarUrl: ""
+  });
+  const [officeData, setOfficeData] = useState({
+    ownerName: "",
+    ownerDocument: "",
+    documentType: "cpf" as "cpf" | "cnpj"
   });
 
   // Buscar perfil do usuário
@@ -70,9 +87,36 @@ const Settings = () => {
     }
   };
 
+  // Buscar configurações do escritório
+  const fetchOfficeSettings = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('office_settings')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Erro ao buscar configurações do escritório:', error);
+      } else if (data) {
+        setOfficeSettings(data as OfficeSettings);
+        setOfficeData({
+          ownerName: data.owner_name || "",
+          ownerDocument: data.owner_document || "",
+          documentType: (data.document_type as "cpf" | "cnpj") || "cpf"
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao buscar configurações do escritório:', error);
+    }
+  };
+
   useEffect(() => {
     if (user) {
       fetchProfile();
+      fetchOfficeSettings();
     }
   }, [user]);
 
@@ -103,6 +147,56 @@ const Settings = () => {
       toast({
         title: "Erro",
         description: error.message || "Erro ao atualizar perfil.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Atualizar dados do escritório
+  const handleOfficeUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      if (officeSettings) {
+        // Atualizar dados existentes
+        const { error } = await supabase
+          .from('office_settings')
+          .update({
+            owner_name: officeData.ownerName || null,
+            owner_document: officeData.ownerDocument || null,
+            document_type: officeData.documentType,
+          })
+          .eq('user_id', user?.id);
+
+        if (error) throw error;
+      } else {
+        // Criar novos dados
+        const { error } = await supabase
+          .from('office_settings')
+          .insert({
+            user_id: user?.id || '',
+            owner_name: officeData.ownerName || null,
+            owner_document: officeData.ownerDocument || null,
+            document_type: officeData.documentType,
+          });
+
+        if (error) throw error;
+      }
+
+      toast({
+        title: "Sucesso",
+        description: "Dados do escritório atualizados com sucesso!",
+      });
+
+      fetchOfficeSettings();
+    } catch (error: any) {
+      console.error('Erro ao atualizar dados do escritório:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao atualizar dados do escritório.",
         variant: "destructive",
       });
     } finally {
@@ -353,6 +447,62 @@ const Settings = () => {
                 <Button type="submit" disabled={isLoading} className="flex items-center gap-2">
                   <Save className="h-4 w-4" />
                   {isLoading ? "Alterando..." : "Alterar Senha"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Dados para Recibos */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building className="h-5 w-5" />
+                Dados para Recibos
+              </CardTitle>
+              <CardDescription>
+                Configure as informações do escritório que aparecerão nos recibos gerados.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleOfficeUpdate} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="ownerName">Nome do Responsável/Razão Social</Label>
+                  <Input
+                    id="ownerName"
+                    value={officeData.ownerName}
+                    onChange={(e) => setOfficeData({ ...officeData, ownerName: e.target.value })}
+                    placeholder="Nome completo ou razão social do escritório"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="documentType">Tipo de Documento</Label>
+                  <Select 
+                    value={officeData.documentType} 
+                    onValueChange={(value: "cpf" | "cnpj") => setOfficeData({ ...officeData, documentType: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o tipo de documento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cpf">CPF</SelectItem>
+                      <SelectItem value="cnpj">CNPJ</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ownerDocument">
+                    {officeData.documentType === 'cpf' ? 'CPF' : 'CNPJ'}
+                  </Label>
+                  <Input
+                    id="ownerDocument"
+                    value={officeData.ownerDocument}
+                    onChange={(e) => setOfficeData({ ...officeData, ownerDocument: e.target.value })}
+                    placeholder={officeData.documentType === 'cpf' ? 'XXX.XXX.XXX-XX' : 'XX.XXX.XXX/XXXX-XX'}
+                  />
+                </div>
+                <Button type="submit" disabled={isLoading} className="flex items-center gap-2">
+                  <Save className="h-4 w-4" />
+                  {isLoading ? "Salvando..." : "Salvar Dados do Escritório"}
                 </Button>
               </form>
             </CardContent>
