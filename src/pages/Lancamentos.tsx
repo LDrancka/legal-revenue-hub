@@ -98,6 +98,7 @@ export default function Lancamentos() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [cases, setCases] = useState<Case[]>([]);
+  const [selectedTransactions, setSelectedTransactions] = useState<string[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -788,6 +789,81 @@ export default function Lancamentos() {
       toast({
         title: "Erro",
         description: "Erro ao excluir lançamento",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Estados para exclusão em lote
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+
+  const handleSelectTransaction = (transactionId: string) => {
+    setSelectedTransactions(prev => 
+      prev.includes(transactionId) 
+        ? prev.filter(id => id !== transactionId)
+        : [...prev, transactionId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedTransactions.length === filteredTransactions.length) {
+      setSelectedTransactions([]);
+    } else {
+      setSelectedTransactions(filteredTransactions.map(t => t.id));
+    }
+  };
+
+  const handleBulkDeleteClick = () => {
+    if (selectedTransactions.length > 0) {
+      setIsBulkDeleteDialogOpen(true);
+    }
+  };
+
+  const handleBulkDeleteConfirm = async () => {
+    if (selectedTransactions.length === 0) return;
+    
+    try {
+      // Primeiro excluir todos os splits das transações selecionadas
+      const { error: splitsError } = await supabase
+        .from('transaction_splits')
+        .delete()
+        .in('transaction_id', selectedTransactions);
+
+      if (splitsError) {
+        console.error('Erro ao excluir splits:', splitsError);
+      }
+
+      // Depois excluir as transações
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .in('id', selectedTransactions);
+
+      if (error) {
+        console.error('Erro ao excluir transações:', error);
+        toast({
+          title: "Erro",
+          description: "Erro ao excluir lançamentos",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Sucesso",
+        description: `${selectedTransactions.length} lançamento(s) excluído(s) com sucesso`
+      });
+
+      // Limpar seleção e recalcular saldos
+      setSelectedTransactions([]);
+      await recalculateAccountBalances();
+      fetchTransactions();
+      setIsBulkDeleteDialogOpen(false);
+    } catch (error) {
+      console.error('Erro ao excluir transações:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao excluir lançamentos",
         variant: "destructive"
       });
     }
@@ -2030,6 +2106,17 @@ export default function Lancamentos() {
           <CardHeader className="pb-2">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-semibold">Lançamentos</h3>
+              {selectedTransactions.length > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDeleteClick}
+                  className="ml-2"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Excluir {selectedTransactions.length} selecionado(s)
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -2051,7 +2138,13 @@ export default function Lancamentos() {
               <div className="overflow-x-auto">
                 {/* Cabeçalho da Tabela */}
                 <div className="bg-muted/30 border-b px-4 py-3 grid grid-cols-12 gap-2 text-sm font-medium text-muted-foreground">
-                  <div className="col-span-3">Descrição</div>
+                  <div className="col-span-1 flex items-center">
+                    <Checkbox 
+                      checked={selectedTransactions.length === filteredTransactions.length && filteredTransactions.length > 0}
+                      onCheckedChange={handleSelectAll}
+                    />
+                  </div>
+                  <div className="col-span-2">Descrição</div>
                   <div className="col-span-2 text-center">Status</div>
                   <div className="col-span-1 text-center">Tipo</div>
                   <div className="col-span-1 text-center">Vencimento</div>
@@ -2067,8 +2160,15 @@ export default function Lancamentos() {
                     const statusInfo = getStatusDisplay(transaction);
                     return (
                       <div key={transaction.id} className="px-4 py-3 grid grid-cols-12 gap-2 items-center hover:bg-muted/30 transition-colors">
+                        {/* Checkbox */}
+                        <div className="col-span-1 flex items-center">
+                          <Checkbox 
+                            checked={selectedTransactions.includes(transaction.id)}
+                            onCheckedChange={() => handleSelectTransaction(transaction.id)}
+                          />
+                        </div>
                         {/* Descrição */}
-                        <div className="col-span-3 min-w-0">
+                        <div className="col-span-2 min-w-0">
                           <div className="flex items-center gap-2">
                             {transaction.type === "receita" ? (
                               <ArrowUpCircle className="h-4 w-4 text-green-600 shrink-0" />
@@ -2556,6 +2656,38 @@ export default function Lancamentos() {
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
               <AlertDialogAction onClick={handleDeleteConfirm} className="bg-red-600 hover:bg-red-700">
                 Confirmar Exclusão
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Dialog de Confirmação para Exclusão em Lote */}
+        <AlertDialog open={isBulkDeleteDialogOpen} onOpenChange={setIsBulkDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar Exclusão em Lote</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir {selectedTransactions.length} lançamento(s) selecionado(s)? Esta ação não pode ser desfeita.
+                <br /><br />
+                <strong>Lançamentos a serem excluídos:</strong><br />
+                {filteredTransactions
+                  .filter(t => selectedTransactions.includes(t.id))
+                  .slice(0, 5)
+                  .map((transaction) => (
+                    <div key={transaction.id}>
+                      • {transaction.description} - {formatCurrency(transaction.amount)}
+                    </div>
+                  ))
+                }
+                {selectedTransactions.length > 5 && (
+                  <div>... e mais {selectedTransactions.length - 5} lançamento(s)</div>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleBulkDeleteConfirm} className="bg-red-600 hover:bg-red-700">
+                Confirmar Exclusão em Lote
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
