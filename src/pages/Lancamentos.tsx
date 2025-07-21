@@ -41,7 +41,7 @@ import { useAuth } from "@/hooks/useAuth";
 import RecurringTransactions from "@/components/RecurringTransactions";
 import { CategoriesDialog } from "@/components/CategoriesDialog";
 import { FileUpload } from "@/components/FileUpload";
-
+import { generateReceipt } from "@/utils/receiptGenerator";
 interface Transaction {
   id: string;
   type: "receita" | "despesa";
@@ -123,6 +123,7 @@ export default function Lancamentos() {
   const [paymentDate, setPaymentDate] = useState<Date>();
   const [paymentObservations, setPaymentObservations] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
+  const [generatePaymentReceipt, setGeneratePaymentReceipt] = useState(false);
   const [attachments, setAttachments] = useState<Array<{
     id: string;
     file_name: string;
@@ -144,6 +145,7 @@ export default function Lancamentos() {
   const [partialObservations, setPartialObservations] = useState("");
   const [newDueDate, setNewDueDate] = useState<Date>();
   const [partialSplitAmounts, setPartialSplitAmounts] = useState<{ [accountId: string]: string }>({});
+  const [generatePartialReceipt, setGeneratePartialReceipt] = useState(false);
 
   // Estados para formulário de cobrança Asaas
   const [isAsaasDialogOpen, setIsAsaasDialogOpen] = useState(false);
@@ -932,6 +934,7 @@ export default function Lancamentos() {
       setPaymentTransaction(transaction);
       setPaymentDate(new Date());
       setPaymentObservations("");
+      setGeneratePaymentReceipt(false);
       
       // Se tem splits (rateio), pré-preencher com a primeira conta do rateio
       if (transaction.splits && transaction.splits.length > 0) {
@@ -1025,6 +1028,30 @@ export default function Lancamentos() {
       paymentObservations,
       paymentAccount
     );
+
+    // Gerar recibo se solicitado
+    if (generatePaymentReceipt) {
+      const clientName = paymentTransaction.client_id 
+        ? getClientName(paymentTransaction.client_id) 
+        : undefined;
+      const caseName = paymentTransaction.case_id 
+        ? getCaseName(paymentTransaction.case_id) 
+        : undefined;
+      const accountName = getAccountName(paymentAccount);
+
+      generateReceipt({
+        transactionId: paymentTransaction.id,
+        description: paymentTransaction.description,
+        amount: paymentTransaction.amount,
+        type: paymentTransaction.type,
+        clientName,
+        caseName,
+        accountName,
+        paymentDate: paymentDate.toISOString().split('T')[0],
+        isPartial: false,
+        observations: paymentObservations
+      });
+    }
 
     setIsPaymentDialogOpen(false);
     setPaymentTransaction(null);
@@ -1238,7 +1265,33 @@ export default function Lancamentos() {
       });
 
       fetchTransactions();
-      setIsPartialPaymentDialogOpen(false);
+    
+    // Gerar recibo se solicitado
+    if (generatePartialReceipt) {
+      const clientName = partialTransaction.client_id 
+        ? getClientName(partialTransaction.client_id) 
+        : undefined;
+      const caseName = partialTransaction.case_id 
+        ? getCaseName(partialTransaction.case_id) 
+        : undefined;
+      const accountName = getAccountName(paymentAccountId);
+
+      generateReceipt({
+        transactionId: partialTransaction.id,
+        description: partialTransaction.description,
+        amount: Number(partialAmount),
+        originalAmount: partialTransaction.amount,
+        type: partialTransaction.type,
+        clientName,
+        caseName,
+        accountName,
+        paymentDate: partialPaymentDate.toISOString().split('T')[0],
+        isPartial: true,
+        observations: partialObservations
+      });
+    }
+
+    setIsPartialPaymentDialogOpen(false);
       setPartialTransaction(null);
     } catch (error) {
       console.error('Erro na quitação parcial:', error);
@@ -2577,6 +2630,17 @@ export default function Lancamentos() {
                   onChange={(e) => setPaymentObservations(e.target.value)}
                 />
               </div>
+              
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="generate-receipt"
+                  checked={generatePaymentReceipt}
+                  onCheckedChange={(checked) => setGeneratePaymentReceipt(checked === true)}
+                />
+                <Label htmlFor="generate-receipt" className="text-sm">
+                  Gerar recibo do pagamento
+                </Label>
+              </div>
 
                 
                 <div className="flex justify-end space-x-2">
@@ -2776,6 +2840,17 @@ export default function Lancamentos() {
                   value={partialObservations}
                   onChange={(e) => setPartialObservations(e.target.value)}
                 />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="generate-partial-receipt"
+                  checked={generatePartialReceipt}
+                  onCheckedChange={(checked) => setGeneratePartialReceipt(checked === true)}
+                />
+                <Label htmlFor="generate-partial-receipt" className="text-sm">
+                  Gerar recibo da quitação parcial
+                </Label>
               </div>
 
               <div className="flex justify-end space-x-2">
