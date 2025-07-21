@@ -14,6 +14,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { 
@@ -146,6 +147,15 @@ export default function Lancamentos() {
   const [newDueDate, setNewDueDate] = useState<Date>();
   const [partialSplitAmounts, setPartialSplitAmounts] = useState<{ [accountId: string]: string }>({});
   const [generatePartialReceipt, setGeneratePartialReceipt] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [accountData, setAccountData] = useState("");
+  const [pixKey, setPixKey] = useState("");
+  const [beneficiaryName, setBeneficiaryName] = useState("");
+  const [partialPaymentMethod, setPartialPaymentMethod] = useState("");
+  const [partialAccountData, setPartialAccountData] = useState("");
+  const [partialPixKey, setPartialPixKey] = useState("");
+  const [partialBeneficiaryName, setPartialBeneficiaryName] = useState("");
+  const [userProfile, setUserProfile] = useState<{display_name?: string}>({});
 
   // Estados para formulário de cobrança Asaas
   const [isAsaasDialogOpen, setIsAsaasDialogOpen] = useState(false);
@@ -214,7 +224,8 @@ export default function Lancamentos() {
         fetchAccounts(),
         fetchCases(),
         fetchClients(),
-        fetchCategories()
+        fetchCategories(),
+        fetchUserProfile()
       ]);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -310,6 +321,21 @@ export default function Lancamentos() {
     }
 
     setCategories(data || []);
+  };
+
+  const fetchUserProfile = async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('user_id', user?.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Erro ao buscar perfil:', error);
+      return;
+    }
+
+    setUserProfile(data || {});
   };
 
   const filteredTransactions = transactions.filter((transaction) => {
@@ -1049,7 +1075,12 @@ export default function Lancamentos() {
         accountName,
         paymentDate: paymentDate.toISOString().split('T')[0],
         isPartial: false,
-        observations: paymentObservations
+        observations: paymentObservations,
+        userDisplayName: userProfile.display_name,
+        paymentMethod,
+        accountData,
+        pixKey,
+        beneficiaryName
       });
     }
 
@@ -1287,7 +1318,12 @@ export default function Lancamentos() {
         accountName,
         paymentDate: partialPaymentDate.toISOString().split('T')[0],
         isPartial: true,
-        observations: partialObservations
+        observations: partialObservations,
+        userDisplayName: userProfile.display_name,
+        paymentMethod: partialPaymentMethod,
+        accountData: partialAccountData,
+        pixKey: partialPixKey,
+        beneficiaryName: partialBeneficiaryName
       });
     }
 
@@ -2635,12 +2671,81 @@ export default function Lancamentos() {
                 <Checkbox 
                   id="generate-receipt"
                   checked={generatePaymentReceipt}
-                  onCheckedChange={(checked) => setGeneratePaymentReceipt(checked === true)}
+                  onCheckedChange={(checked) => {
+                    setGeneratePaymentReceipt(checked === true);
+                    if (!checked) {
+                      setPaymentMethod("");
+                      setAccountData("");
+                      setPixKey("");
+                      setBeneficiaryName("");
+                    }
+                  }}
                 />
                 <Label htmlFor="generate-receipt" className="text-sm">
                   Gerar recibo do pagamento
                 </Label>
               </div>
+
+              {generatePaymentReceipt && (
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
+                  <div className="space-y-2">
+                    <Label>Forma de Pagamento</Label>
+                    <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="Dinheiro" id="dinheiro" />
+                        <Label htmlFor="dinheiro">Dinheiro</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="Cartão" id="cartao" />
+                        <Label htmlFor="cartao">Cartão</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="Transferência" id="transferencia" />
+                        <Label htmlFor="transferencia">Transferência</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="PIX" id="pix" />
+                        <Label htmlFor="pix">PIX</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  {(paymentMethod === "Transferência" || paymentMethod === "PIX") && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="accountData">Dados da Conta</Label>
+                        <Input
+                          id="accountData"
+                          value={accountData}
+                          onChange={(e) => setAccountData(e.target.value)}
+                          placeholder="Banco, agência, conta..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="beneficiaryName">Nome do Beneficiário</Label>
+                        <Input
+                          id="beneficiaryName"
+                          value={beneficiaryName}
+                          onChange={(e) => setBeneficiaryName(e.target.value)}
+                          placeholder="Nome completo"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {paymentMethod === "PIX" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="pixKey">Chave PIX</Label>
+                      <Input
+                        id="pixKey"
+                        value={pixKey}
+                        onChange={(e) => setPixKey(e.target.value)}
+                        placeholder="Chave PIX utilizada"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
                 
                 <div className="flex justify-end space-x-2">
@@ -2846,12 +2951,81 @@ export default function Lancamentos() {
                 <Checkbox 
                   id="generate-partial-receipt"
                   checked={generatePartialReceipt}
-                  onCheckedChange={(checked) => setGeneratePartialReceipt(checked === true)}
+                  onCheckedChange={(checked) => {
+                    setGeneratePartialReceipt(checked === true);
+                    if (!checked) {
+                      setPartialPaymentMethod("");
+                      setPartialAccountData("");
+                      setPartialPixKey("");
+                      setPartialBeneficiaryName("");
+                    }
+                  }}
                 />
                 <Label htmlFor="generate-partial-receipt" className="text-sm">
                   Gerar recibo da quitação parcial
                 </Label>
               </div>
+
+              {generatePartialReceipt && (
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
+                  <div className="space-y-2">
+                    <Label>Forma de Pagamento</Label>
+                    <RadioGroup value={partialPaymentMethod} onValueChange={setPartialPaymentMethod}>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="Dinheiro" id="partial-dinheiro" />
+                        <Label htmlFor="partial-dinheiro">Dinheiro</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="Cartão" id="partial-cartao" />
+                        <Label htmlFor="partial-cartao">Cartão</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="Transferência" id="partial-transferencia" />
+                        <Label htmlFor="partial-transferencia">Transferência</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="PIX" id="partial-pix" />
+                        <Label htmlFor="partial-pix">PIX</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  {(partialPaymentMethod === "Transferência" || partialPaymentMethod === "PIX") && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="partialAccountData">Dados da Conta</Label>
+                        <Input
+                          id="partialAccountData"
+                          value={partialAccountData}
+                          onChange={(e) => setPartialAccountData(e.target.value)}
+                          placeholder="Banco, agência, conta..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="partialBeneficiaryName">Nome do Beneficiário</Label>
+                        <Input
+                          id="partialBeneficiaryName"
+                          value={partialBeneficiaryName}
+                          onChange={(e) => setPartialBeneficiaryName(e.target.value)}
+                          placeholder="Nome completo"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {partialPaymentMethod === "PIX" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="partialPixKey">Chave PIX</Label>
+                      <Input
+                        id="partialPixKey"
+                        value={partialPixKey}
+                        onChange={(e) => setPartialPixKey(e.target.value)}
+                        placeholder="Chave PIX utilizada"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex justify-end space-x-2">
                 <Button
