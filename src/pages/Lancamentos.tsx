@@ -408,10 +408,17 @@ export default function Lancamentos() {
       }
       
       const totalPercentage = formData.rateios.reduce((sum, r) => sum + (r.percentage || 0), 0);
-      if (Math.abs(totalPercentage - 100) > 0.01) {
+      const totalAmount = formData.rateios.reduce((sum, r) => sum + (r.amount || 0), 0);
+      const formAmount = parseFloat(formData.amount) || 0;
+      
+      // Validar se o total dos percentuais está próximo de 100% OU se o total dos valores está correto
+      const percentageValid = Math.abs(totalPercentage - 100) <= 0.01;
+      const amountValid = Math.abs(totalAmount - formAmount) <= 0.01;
+      
+      if (!percentageValid && !amountValid) {
         toast({
           title: "Erro",
-          description: "O total dos rateios deve ser 100%",
+          description: "O total dos rateios deve ser 100% ou os valores devem somar exatamente o valor total",
           variant: "destructive"
         });
         return;
@@ -1940,13 +1947,21 @@ export default function Lancamentos() {
                         </div>
                       ))}
                       
-                      <div className="text-xs text-muted-foreground">
-                        Total: {formData.rateios.reduce((sum, r) => sum + (r.percentage || 0), 0).toFixed(2)}%
-                        {Math.abs(formData.rateios.reduce((sum, r) => sum + (r.percentage || 0), 0) - 100) > 0.01 && (
-                          <span className="text-red-500 ml-2">
-                            ⚠️ O total deve ser 100%
-                          </span>
-                        )}
+                       <div className="text-xs text-muted-foreground">
+                         Total: {formData.rateios.reduce((sum, r) => sum + (r.percentage || 0), 0).toFixed(2)}%
+                         {(() => {
+                           const totalPercentage = formData.rateios.reduce((sum, r) => sum + (r.percentage || 0), 0);
+                           const totalAmount = formData.rateios.reduce((sum, r) => sum + (r.amount || 0), 0);
+                           const formAmount = parseFloat(formData.amount) || 0;
+                           const percentageValid = Math.abs(totalPercentage - 100) <= 0.01;
+                           const amountValid = Math.abs(totalAmount - formAmount) <= 0.01;
+                           
+                           return !percentageValid && !amountValid && (
+                             <span className="text-red-500 ml-2">
+                               ⚠️ O total deve ser 100% ou os valores devem somar {formatCurrency(formAmount)}
+                             </span>
+                           );
+                         })()}
                       </div>
                     </div>
                   )}
