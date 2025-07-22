@@ -9,8 +9,10 @@ export interface ExportTransaction {
   due_date: string;
   payment_date?: string;
   account_name?: string;
+  account_id?: string;
   case_name?: string;
   category_name?: string;
+  client_name?: string;
   observations?: string;
   payment_observations?: string;
 }

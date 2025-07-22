@@ -8,8 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { exportToExcel, exportToCSV, ExportTransaction } from "@/utils/exportUtils";
-import { FileDown, FileSpreadsheet, BarChart3, TrendingUp, TrendingDown, Calendar } from "lucide-react";
+import { FileDown, FileSpreadsheet, BarChart3, TrendingUp, TrendingDown, Calendar, FileText, AlertTriangle, Banknote } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 interface ReportData {
   period: string;
@@ -38,12 +40,22 @@ export default function Reports() {
     status: 'all',
     reportType: 'monthly'
   });
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [selectedReport, setSelectedReport] = useState('general');
 
   const loadReportData = async () => {
     if (!user) return;
     
     setLoading(true);
     try {
+      // Carregar contas
+      const { data: accountsData } = await supabase
+        .from('accounts')
+        .select('*')
+        .order('name');
+      
+      setAccounts(accountsData || []);
+
       // Query base
       let query = supabase
         .from('transactions')
@@ -51,7 +63,8 @@ export default function Reports() {
           *,
           accounts!account_id(name),
           cases!case_id(name),
-          categories!category_id(name, color)
+          categories!category_id(name, color),
+          clients!client_id(name)
         `)
         .gte('due_date', filters.startDate)
         .lte('due_date', filters.endDate);
@@ -78,8 +91,10 @@ export default function Reports() {
         due_date: t.due_date,
         payment_date: t.payment_date,
         account_name: t.accounts?.name,
+        account_id: t.account_id,
         case_name: t.cases?.name,
         category_name: t.categories?.name,
+        client_name: t.clients?.name,
         observations: t.observations,
         payment_observations: t.payment_observations
       }));
@@ -167,6 +182,146 @@ export default function Reports() {
     });
   };
 
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    
+    // Título
+    doc.setFontSize(16);
+    doc.text('Relatório Financeiro', 20, 20);
+    
+    // Informações do período
+    doc.setFontSize(10);
+    doc.text(`Período: ${filters.startDate} até ${filters.endDate}`, 20, 30);
+    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 20, 35);
+    
+    // Resumo
+    doc.setFontSize(12);
+    doc.text('Resumo:', 20, 50);
+    doc.setFontSize(10);
+    doc.text(`Total Receitas: R$ ${totals.receitas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 60);
+    doc.text(`Total Despesas: R$ ${totals.despesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 65);
+    doc.text(`Saldo: R$ ${saldoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 70);
+    
+    // Tabela de transações
+    const tableData = transactions.map(t => [
+      t.description,
+      t.type === 'receita' ? 'Receita' : 'Despesa',
+      `R$ ${t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+      t.status === 'quitado' ? 'Quitado' : 'Pendente',
+      new Date(t.due_date).toLocaleDateString('pt-BR'),
+      t.account_name || '-'
+    ]);
+    
+    (doc as any).autoTable({
+      head: [['Descrição', 'Tipo', 'Valor', 'Status', 'Vencimento', 'Conta']],
+      body: tableData,
+      startY: 80,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [99, 102, 241] }
+    });
+    
+    doc.save(`relatorio_${filters.startDate}_${filters.endDate}.pdf`);
+    toast({
+      title: "Sucesso",
+      description: "Relatório exportado para PDF!",
+    });
+  };
+
+  const getDefaultersReport = () => {
+    const today = new Date();
+    return transactions.filter(t => 
+      t.status === 'pendente' && 
+      new Date(t.due_date) < today
+    );
+  };
+
+  const getAccountMovementReport = (accountId: string) => {
+    return transactions.filter(t => t.account_id === accountId);
+  };
+
+  const handleGenerateDefaultersReport = () => {
+    const defaulters = getDefaultersReport();
+    
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Relatório de Inadimplentes', 20, 20);
+    
+    doc.setFontSize(10);
+    doc.text(`Período: ${filters.startDate} até ${filters.endDate}`, 20, 30);
+    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 20, 35);
+    doc.text(`Total de inadimplentes: ${defaulters.length}`, 20, 40);
+    
+    const totalInadimplencia = defaulters.reduce((sum, t) => sum + t.amount, 0);
+    doc.text(`Valor total em atraso: R$ ${totalInadimplencia.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 45);
+    
+    const tableData = defaulters.map(t => [
+      t.description,
+      t.client_name || '-',
+      `R$ ${t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+      new Date(t.due_date).toLocaleDateString('pt-BR'),
+      Math.floor((Date.now() - new Date(t.due_date).getTime()) / (1000 * 60 * 60 * 24)) + ' dias'
+    ]);
+    
+    (doc as any).autoTable({
+      head: [['Descrição', 'Cliente', 'Valor', 'Vencimento', 'Dias em Atraso']],
+      body: tableData,
+      startY: 55,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [239, 68, 68] }
+    });
+    
+    doc.save(`inadimplentes_${filters.startDate}_${filters.endDate}.pdf`);
+    toast({
+      title: "Sucesso",
+      description: "Relatório de inadimplentes gerado!",
+    });
+  };
+
+  const handleGenerateAccountReport = (accountId: string) => {
+    const account = accounts.find(a => a.id === accountId);
+    if (!account) return;
+    
+    const accountTransactions = getAccountMovementReport(accountId);
+    
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text(`Relatório de Movimentação - ${account.name}`, 20, 20);
+    
+    doc.setFontSize(10);
+    doc.text(`Período: ${filters.startDate} até ${filters.endDate}`, 20, 30);
+    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 20, 35);
+    doc.text(`Total de movimentações: ${accountTransactions.length}`, 20, 40);
+    
+    const receitas = accountTransactions.filter(t => t.type === 'receita').reduce((sum, t) => sum + t.amount, 0);
+    const despesas = accountTransactions.filter(t => t.type === 'despesa').reduce((sum, t) => sum + t.amount, 0);
+    
+    doc.text(`Receitas: R$ ${receitas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 45);
+    doc.text(`Despesas: R$ ${despesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 50);
+    doc.text(`Saldo: R$ ${(receitas - despesas).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 55);
+    
+    const tableData = accountTransactions.map(t => [
+      t.description,
+      t.type === 'receita' ? 'Receita' : 'Despesa',
+      `R$ ${t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+      t.status === 'quitado' ? 'Quitado' : 'Pendente',
+      new Date(t.due_date).toLocaleDateString('pt-BR')
+    ]);
+    
+    (doc as any).autoTable({
+      head: [['Descrição', 'Tipo', 'Valor', 'Status', 'Vencimento']],
+      body: tableData,
+      startY: 65,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [99, 102, 241] }
+    });
+    
+    doc.save(`movimentacao_${account.name}_${filters.startDate}_${filters.endDate}.pdf`);
+    toast({
+      title: "Sucesso",
+      description: `Relatório de movimentação da conta ${account.name} gerado!`,
+    });
+  };
+
   const totals = transactions.reduce((acc, t) => {
     if (t.type === 'receita') {
       acc.receitas += t.amount;
@@ -191,6 +346,10 @@ export default function Reports() {
             <FileDown className="h-4 w-4 mr-2" />
             CSV
           </Button>
+          <Button onClick={handleExportPDF} disabled={loading || transactions.length === 0}>
+            <FileText className="h-4 w-4 mr-2" />
+            PDF
+          </Button>
         </div>
       </div>
 
@@ -203,7 +362,7 @@ export default function Reports() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
             <div>
               <Label htmlFor="startDate">Data Início</Label>
               <Input
@@ -260,6 +419,55 @@ export default function Reports() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Tipo de Relatório</Label>
+              <Select value={selectedReport} onValueChange={setSelectedReport}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">Geral</SelectItem>
+                  <SelectItem value="defaulters">Inadimplentes</SelectItem>
+                  <SelectItem value="account">Por Conta</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Relatórios Personalizados */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Relatórios Personalizados
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-4">
+            <Button 
+              onClick={handleGenerateDefaultersReport}
+              disabled={loading}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              Relatório de Inadimplentes ({getDefaultersReport().length})
+            </Button>
+            
+            {accounts.map(account => (
+              <Button
+                key={account.id}
+                onClick={() => handleGenerateAccountReport(account.id)}
+                disabled={loading}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Banknote className="h-4 w-4" />
+                Movimentação - {account.name} ({getAccountMovementReport(account.id).length})
+              </Button>
+            ))}
           </div>
         </CardContent>
       </Card>
