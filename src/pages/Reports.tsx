@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { exportToExcel, exportToCSV, ExportTransaction } from "@/utils/exportUtils";
+import { exportToExcel, exportToCSV, exportToPDF, ExportTransaction } from "@/utils/exportUtils";
 import { FileDown, FileSpreadsheet, BarChart3, TrendingUp, TrendingDown, Calendar, FileText, AlertTriangle, Banknote } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import jsPDF from 'jspdf';
@@ -46,6 +46,7 @@ export default function Reports() {
     accountId: 'all',
     reportSubtype: 'all' // 'defaulters', 'account-movement', etc.
   });
+  const [selectedAccount, setSelectedAccount] = useState('');
 
   const loadReportData = async () => {
     if (!user) return;
@@ -340,48 +341,27 @@ export default function Reports() {
     });
   };
 
-  const handleGenerateAccountReport = (accountId: string) => {
-    const account = accounts.find(a => a.id === accountId);
-    if (!account) return;
+  const handleGenerateAccountReport = (format: 'excel' | 'csv' | 'pdf') => {
+    if (!selectedAccount) return;
     
-    const accountTransactions = getAccountMovementReport(accountId);
+    const filteredTransactions = getAccountMovementReport(selectedAccount);
+    const accountName = accounts.find(acc => acc.id === selectedAccount)?.name || 'Todas as Contas';
+    const filename = `movimentacao_${accountName.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`;
     
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text(`Relatório de Movimentação - ${account.name}`, 20, 20);
+    if (format === 'excel') {
+      exportToExcel(filteredTransactions, filename);
+    } else if (format === 'csv') {
+      exportToCSV(filteredTransactions, filename);
+    } else if (format === 'pdf') {
+      // Buscar saldo inicial da conta
+      const account = accounts.find(acc => acc.id === selectedAccount);
+      const initialBalance = account?.balance || 0;
+      exportToPDF(filteredTransactions, filename, accountName, initialBalance);
+    }
     
-    doc.setFontSize(10);
-    doc.text(`Período: ${filters.startDate} até ${filters.endDate}`, 20, 30);
-    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 20, 35);
-    doc.text(`Total de movimentações: ${accountTransactions.length}`, 20, 40);
-    
-    const receitas = accountTransactions.filter(t => t.type === 'receita').reduce((sum, t) => sum + t.amount, 0);
-    const despesas = accountTransactions.filter(t => t.type === 'despesa').reduce((sum, t) => sum + t.amount, 0);
-    
-    doc.text(`Receitas: R$ ${receitas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 45);
-    doc.text(`Despesas: R$ ${despesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 50);
-    doc.text(`Saldo: R$ ${(receitas - despesas).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 55);
-    
-    const tableData = accountTransactions.map(t => [
-      t.description,
-      t.type === 'receita' ? 'Receita' : 'Despesa',
-      `R$ ${t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      t.status === 'quitado' ? 'Quitado' : 'Pendente',
-      new Date(t.due_date).toLocaleDateString('pt-BR')
-    ]);
-    
-    autoTable(doc, {
-      head: [['Descrição', 'Tipo', 'Valor', 'Status', 'Vencimento']],
-      body: tableData,
-      startY: 65,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [99, 102, 241] }
-    });
-    
-    doc.save(`movimentacao_${account.name}_${filters.startDate}_${filters.endDate}.pdf`);
     toast({
-      title: "Sucesso",
-      description: `Relatório de movimentação da conta ${account.name} gerado!`,
+      title: "Relatório exportado com sucesso!",
+      description: `Arquivo ${filename}.${format === 'excel' ? 'xlsx' : format === 'csv' ? 'csv' : 'pdf'} foi baixado.`,
     });
   };
 
@@ -389,7 +369,49 @@ export default function Reports() {
     if (reportFilters.reportSubtype === 'defaulters') {
       handleGenerateDefaultersReport();
     } else if (reportFilters.reportSubtype === 'account-movement' && reportFilters.accountId !== 'all') {
-      handleGenerateAccountReport(reportFilters.accountId);
+      // Para conta específica, criar relatório específico
+      const account = accounts.find(a => a.id === reportFilters.accountId);
+      if (!account) return;
+      
+      const accountTransactions = getAccountMovementReport(reportFilters.accountId);
+      
+      const doc = new jsPDF();
+      doc.setFontSize(16);
+      doc.text(`Relatório de Movimentação - ${account.name}`, 20, 20);
+      
+      doc.setFontSize(10);
+      doc.text(`Período: ${filters.startDate} até ${filters.endDate}`, 20, 30);
+      doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 20, 35);
+      doc.text(`Total de movimentações: ${accountTransactions.length}`, 20, 40);
+      
+      const receitas = accountTransactions.filter(t => t.type === 'receita').reduce((sum, t) => sum + t.amount, 0);
+      const despesas = accountTransactions.filter(t => t.type === 'despesa').reduce((sum, t) => sum + t.amount, 0);
+      
+      doc.text(`Receitas: R$ ${receitas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 45);
+      doc.text(`Despesas: R$ ${despesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 50);
+      doc.text(`Saldo: R$ ${(receitas - despesas).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 20, 55);
+      
+      const tableData = accountTransactions.map(t => [
+        t.description,
+        t.type === 'receita' ? 'Receita' : 'Despesa',
+        `R$ ${t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        t.status === 'quitado' ? 'Quitado' : 'Pendente',
+        new Date(t.due_date).toLocaleDateString('pt-BR')
+      ]);
+      
+      autoTable(doc, {
+        head: [['Descrição', 'Tipo', 'Valor', 'Status', 'Vencimento']],
+        body: tableData,
+        startY: 65,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [99, 102, 241] }
+      });
+      
+      doc.save(`movimentacao_${account.name}_${filters.startDate}_${filters.endDate}.pdf`);
+      toast({
+        title: "Sucesso",
+        description: `Relatório de movimentação da conta ${account.name} gerado!`,
+      });
     } else if (reportFilters.reportSubtype === 'account-movement' && reportFilters.accountId === 'all') {
       // Relatório geral de todas as contas
       const doc = new jsPDF();
@@ -614,6 +636,70 @@ export default function Reports() {
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Extrato de Conta */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Banknote className="h-5 w-5" />
+            Extrato de Conta
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div className="md:col-span-2">
+              <Label>Selecionar Conta</Label>
+              <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma conta" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map(account => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name} - Saldo: R$ {account.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="md:col-span-2 flex gap-2 items-end">
+              <Button 
+                onClick={() => handleGenerateAccountReport('excel')}
+                disabled={!selectedAccount}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Gerar Excel
+              </Button>
+              <Button 
+                onClick={() => handleGenerateAccountReport('csv')}
+                disabled={!selectedAccount}
+                variant="outline"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Gerar CSV
+              </Button>
+              <Button 
+                onClick={() => handleGenerateAccountReport('pdf')}
+                disabled={!selectedAccount}
+                variant="secondary"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Gerar Extrato PDF
+              </Button>
+            </div>
+          </div>
+          
+          {selectedAccount && (
+            <div className="text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 text-blue-600">
+                <Banknote className="h-4 w-4" />
+                Movimentações da conta: {getAccountMovementReport(selectedAccount).length}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

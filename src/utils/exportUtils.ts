@@ -1,4 +1,6 @@
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 export interface ExportTransaction {
   id: string;
@@ -96,4 +98,106 @@ export const exportToCSV = (transactions: ExportTransaction[], filename: string 
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+};
+
+export const exportToPDF = (
+  transactions: ExportTransaction[], 
+  filename: string = 'extrato', 
+  accountName: string = 'Conta',
+  initialBalance: number = 0
+) => {
+  const doc = new jsPDF();
+  
+  // Título do relatório
+  doc.setFontSize(18);
+  doc.text('EXTRATO DE CONTA', 20, 20);
+  
+  doc.setFontSize(12);
+  doc.text(`Conta: ${accountName}`, 20, 35);
+  doc.text(`Período: ${new Date().toLocaleDateString('pt-BR')}`, 20, 45);
+  doc.text(`Saldo Anterior: R$ ${initialBalance.toFixed(2).replace('.', ',')}`, 20, 55);
+  
+  // Preparar dados ordenados por data de pagamento/vencimento
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    const dateA = new Date(a.payment_date || a.due_date);
+    const dateB = new Date(b.payment_date || b.due_date);
+    return dateA.getTime() - dateB.getTime();
+  });
+  
+  // Calcular saldos progressivos
+  let currentBalance = initialBalance;
+  const tableData = sortedTransactions.map(transaction => {
+    const isExpense = transaction.type === 'despesa';
+    const amount = isExpense ? -Math.abs(transaction.amount) : Math.abs(transaction.amount);
+    currentBalance += amount;
+    
+    const date = transaction.payment_date 
+      ? new Date(transaction.payment_date).toLocaleDateString('pt-BR')
+      : new Date(transaction.due_date).toLocaleDateString('pt-BR');
+    
+    const formattedAmount = `${isExpense ? '-' : ''}R$ ${Math.abs(transaction.amount).toFixed(2).replace('.', ',')}`;
+    const formattedBalance = `R$ ${currentBalance.toFixed(2).replace('.', ',')}`;
+    
+    return [
+      date,
+      transaction.description,
+      transaction.type === 'receita' ? 'Receita' : 'Despesa',
+      formattedAmount,
+      formattedBalance,
+      transaction.status === 'pendente' ? 'Pendente' : 
+      transaction.status === 'pago' ? 'Pago' : 
+      transaction.status === 'cancelado' ? 'Cancelado' : transaction.status,
+      'Admin' // Placeholder para usuário
+    ];
+  });
+  
+  // Configurar tabela
+  (doc as any).autoTable({
+    head: [['Data', 'Descrição', 'Tipo', 'Valor', 'Saldo', 'Status', 'Usuário']],
+    body: tableData,
+    startY: 65,
+    styles: {
+      fontSize: 8,
+      cellPadding: 2,
+    },
+    headStyles: {
+      fillColor: [59, 130, 246], // Azul
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+    },
+    columnStyles: {
+      0: { cellWidth: 20 }, // Data
+      1: { cellWidth: 40 }, // Descrição
+      2: { cellWidth: 20 }, // Tipo
+      3: { cellWidth: 25 }, // Valor
+      4: { cellWidth: 25 }, // Saldo
+      5: { cellWidth: 20 }, // Status
+      6: { cellWidth: 20 }, // Usuário
+    },
+    didParseCell: function(data: any) {
+      // Colorir valores de despesa em vermelho
+      if (data.column.index === 3 && data.cell.text[0]?.startsWith('-')) {
+        data.cell.styles.textColor = [220, 38, 38]; // Vermelho
+      }
+      
+      // Colorir tipo Despesa em vermelho
+      if (data.column.index === 2 && data.cell.text[0] === 'Despesa') {
+        data.cell.styles.textColor = [220, 38, 38]; // Vermelho
+      }
+      
+      // Colorir tipo Receita em verde
+      if (data.column.index === 2 && data.cell.text[0] === 'Receita') {
+        data.cell.styles.textColor = [34, 197, 94]; // Verde
+      }
+    },
+    margin: { top: 10, left: 10, right: 10 },
+  });
+  
+  // Adicionar resumo final
+  const finalY = (doc as any).lastAutoTable.finalY || 65;
+  doc.setFontSize(12);
+  doc.text(`Saldo Final: R$ ${currentBalance.toFixed(2).replace('.', ',')}`, 20, finalY + 20);
+  
+  // Download do arquivo
+  doc.save(`${filename}.pdf`);
 };
