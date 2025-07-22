@@ -42,6 +42,10 @@ export default function Reports() {
   });
   const [accounts, setAccounts] = useState<any[]>([]);
   const [selectedReport, setSelectedReport] = useState('general');
+  const [reportFilters, setReportFilters] = useState({
+    accountId: 'all',
+    reportSubtype: 'all' // 'defaulters', 'account-movement', etc.
+  });
 
   const loadReportData = async () => {
     if (!user) return;
@@ -56,7 +60,7 @@ export default function Reports() {
       
       setAccounts(accountsData || []);
 
-      // Query base
+      // Query base para transações
       let query = supabase
         .from('transactions')
         .select(`
@@ -65,7 +69,14 @@ export default function Reports() {
           payment_accounts:accounts!payment_account_id(name),
           cases!case_id(name),
           categories!category_id(name, color),
-          clients!client_id(name)
+          clients!client_id(name),
+          transaction_splits(
+            id,
+            account_id,
+            amount,
+            percentage,
+            accounts!account_id(name)
+          )
         `)
         .gte('due_date', filters.startDate)
         .lte('due_date', filters.endDate);
@@ -84,32 +95,62 @@ export default function Reports() {
 
       console.log('Dados carregados do banco:', data);
 
-      // Preparar dados para export
-      const exportTransactions: ExportTransaction[] = (data || []).map(t => ({
-        id: t.id,
-        description: t.description,
-        amount: t.amount,
-        type: t.type,
-        status: t.status,
-        due_date: t.due_date,
-        payment_date: t.payment_date,
-        account_name: t.accounts?.name,
-        account_id: t.account_id,
-        payment_account_id: t.payment_account_id,
-        case_name: t.cases?.name,
-        category_name: t.categories?.name,
-        client_name: t.clients?.name,
-        observations: t.observations,
-        payment_observations: t.payment_observations
-      }));
+      // Processar transações considerando rateios
+      const processedTransactions: ExportTransaction[] = [];
+      
+      (data || []).forEach(t => {
+        if (t.transaction_splits && t.transaction_splits.length > 0) {
+          // Transação com rateio - criar uma entrada para cada split
+          t.transaction_splits.forEach((split: any) => {
+            processedTransactions.push({
+              id: `${t.id}-split-${split.id}`,
+              description: `${t.description} (Rateio)`,
+              amount: split.amount,
+              type: t.type,
+              status: t.status,
+              due_date: t.due_date,
+              payment_date: t.payment_date,
+              account_name: split.accounts?.name,
+              account_id: split.account_id,
+              payment_account_id: t.payment_account_id,
+              case_name: t.cases?.name,
+              category_name: t.categories?.name,
+              client_name: t.clients?.name,
+              observations: t.observations,
+              payment_observations: t.payment_observations,
+              is_split: true,
+              original_transaction_id: t.id
+            });
+          });
+        } else {
+          // Transação normal - sem rateio
+          processedTransactions.push({
+            id: t.id,
+            description: t.description,
+            amount: t.amount,
+            type: t.type,
+            status: t.status,
+            due_date: t.due_date,
+            payment_date: t.payment_date,
+            account_name: t.accounts?.name,
+            account_id: t.account_id,
+            payment_account_id: t.payment_account_id,
+            case_name: t.cases?.name,
+            category_name: t.categories?.name,
+            client_name: t.clients?.name,
+            observations: t.observations,
+            payment_observations: t.payment_observations,
+            is_split: false
+          });
+        }
+      });
 
-      setTransactions(exportTransactions);
+      setTransactions(processedTransactions);
 
-      // Processar dados para gráficos
       const monthlyData: { [key: string]: { receitas: number; despesas: number } } = {};
       const categoryTotals: { [key: string]: { value: number; color: string } } = {};
 
-      data?.forEach(transaction => {
+      processedTransactions.forEach(transaction => {
         const date = new Date(transaction.due_date);
         const monthKey = filters.reportType === 'monthly' 
           ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
@@ -126,10 +167,10 @@ export default function Reports() {
         }
 
         // Dados por categoria
-        if (transaction.categories?.name) {
-          const categoryName = transaction.categories.name;
+        if (transaction.category_name) {
+          const categoryName = transaction.category_name;
           if (!categoryTotals[categoryName]) {
-            categoryTotals[categoryName] = { value: 0, color: transaction.categories.color || '#6366f1' };
+            categoryTotals[categoryName] = { value: 0, color: '#6366f1' };
           }
           categoryTotals[categoryName].value += transaction.amount;
         }
@@ -240,6 +281,8 @@ export default function Reports() {
   };
 
   const getAccountMovementReport = (accountId: string) => {
+    if (accountId === 'all') return transactions;
+    
     const filteredTransactions = transactions.filter(t => 
       t.account_id === accountId || t.payment_account_id === accountId
     );
@@ -329,6 +372,46 @@ export default function Reports() {
       title: "Sucesso",
       description: `Relatório de movimentação da conta ${account.name} gerado!`,
     });
+  };
+
+  const handleGenerateCustomReport = () => {
+    if (reportFilters.reportSubtype === 'defaulters') {
+      handleGenerateDefaultersReport();
+    } else if (reportFilters.reportSubtype === 'account-movement' && reportFilters.accountId !== 'all') {
+      handleGenerateAccountReport(reportFilters.accountId);
+    } else if (reportFilters.reportSubtype === 'account-movement' && reportFilters.accountId === 'all') {
+      // Relatório geral de todas as contas
+      const doc = new jsPDF();
+      doc.setFontSize(16);
+      doc.text('Relatório de Movimentação - Todas as Contas', 20, 20);
+      
+      doc.setFontSize(10);
+      doc.text(`Período: ${filters.startDate} até ${filters.endDate}`, 20, 30);
+      doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 20, 35);
+      
+      const tableData = transactions.map(t => [
+        t.description,
+        t.account_name || 'N/A',
+        t.type === 'receita' ? 'Receita' : 'Despesa',
+        `R$ ${t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        t.status === 'quitado' ? 'Quitado' : 'Pendente',
+        new Date(t.due_date).toLocaleDateString('pt-BR')
+      ]);
+      
+      autoTable(doc, {
+        head: [['Descrição', 'Conta', 'Tipo', 'Valor', 'Status', 'Vencimento']],
+        body: tableData,
+        startY: 45,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [99, 102, 241] }
+      });
+      
+      doc.save(`movimentacao_todas_contas_${filters.startDate}_${filters.endDate}.pdf`);
+      toast({
+        title: "Sucesso",
+        description: "Relatório de movimentação de todas as contas gerado!",
+      });
+    }
   };
 
   const totals = transactions.reduce((acc, t) => {
@@ -454,29 +537,71 @@ export default function Reports() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-4">
-            <Button 
-              onClick={handleGenerateDefaultersReport}
-              disabled={loading}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
-              <AlertTriangle className="h-4 w-4" />
-              Relatório de Inadimplentes ({getDefaultersReport().length})
-            </Button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <Label>Tipo de Relatório</Label>
+              <Select value={reportFilters.reportSubtype} onValueChange={(value) => setReportFilters({ ...reportFilters, reportSubtype: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Selecione um tipo</SelectItem>
+                  <SelectItem value="defaulters">Inadimplentes</SelectItem>
+                  <SelectItem value="account-movement">Movimentação por Conta</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             
-            {accounts.map(account => (
-              <Button
-                key={account.id}
-                onClick={() => handleGenerateAccountReport(account.id)}
-                disabled={loading}
-                variant="outline"
-                className="flex items-center gap-2"
+            {reportFilters.reportSubtype === 'account-movement' && (
+              <div>
+                <Label>Conta</Label>
+                <Select value={reportFilters.accountId} onValueChange={(value) => setReportFilters({ ...reportFilters, accountId: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a conta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Contas</SelectItem>
+                    {accounts.map(account => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            
+            <div className="flex items-end">
+              <Button 
+                onClick={handleGenerateCustomReport}
+                disabled={loading || reportFilters.reportSubtype === 'all'}
+                className="w-full"
               >
-                <Banknote className="h-4 w-4" />
-                Movimentação - {account.name} ({getAccountMovementReport(account.id).length})
+                <FileText className="h-4 w-4 mr-2" />
+                Gerar Relatório
               </Button>
-            ))}
+            </div>
+          </div>
+          
+          <div className="text-sm text-muted-foreground">
+            {reportFilters.reportSubtype === 'defaulters' && (
+              <div className="flex items-center gap-2 text-red-600">
+                <AlertTriangle className="h-4 w-4" />
+                Total de inadimplentes: {getDefaultersReport().length}
+              </div>
+            )}
+            {reportFilters.reportSubtype === 'account-movement' && reportFilters.accountId !== 'all' && reportFilters.accountId !== '' && (
+              <div className="flex items-center gap-2 text-blue-600">
+                <Banknote className="h-4 w-4" />
+                Movimentações da conta: {getAccountMovementReport(reportFilters.accountId).length}
+              </div>
+            )}
+            {reportFilters.reportSubtype === 'account-movement' && reportFilters.accountId === 'all' && (
+              <div className="flex items-center gap-2 text-green-600">
+                <Banknote className="h-4 w-4" />
+                Total de movimentações: {transactions.length}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

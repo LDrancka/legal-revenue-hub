@@ -16,6 +16,8 @@ export interface ExportTransaction {
   client_name?: string;
   observations?: string;
   payment_observations?: string;
+  is_split?: boolean;
+  original_transaction_id?: string;
 }
 
 export const exportToExcel = (transactions: ExportTransaction[], filename: string = 'lancamentos') => {
