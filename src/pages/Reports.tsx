@@ -11,7 +11,7 @@ import { exportToExcel, exportToCSV, ExportTransaction } from "@/utils/exportUti
 import { FileDown, FileSpreadsheet, BarChart3, TrendingUp, TrendingDown, Calendar, FileText, AlertTriangle, Banknote } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 interface ReportData {
   period: string;
@@ -212,7 +212,7 @@ export default function Reports() {
       t.account_name || '-'
     ]);
     
-    (doc as any).autoTable({
+    autoTable(doc, {
       head: [['Descrição', 'Tipo', 'Valor', 'Status', 'Vencimento', 'Conta']],
       body: tableData,
       startY: 80,
@@ -262,7 +262,7 @@ export default function Reports() {
       Math.floor((Date.now() - new Date(t.due_date).getTime()) / (1000 * 60 * 60 * 24)) + ' dias'
     ]);
     
-    (doc as any).autoTable({
+    autoTable(doc, {
       head: [['Descrição', 'Cliente', 'Valor', 'Vencimento', 'Dias em Atraso']],
       body: tableData,
       startY: 55,
@@ -307,7 +307,7 @@ export default function Reports() {
       new Date(t.due_date).toLocaleDateString('pt-BR')
     ]);
     
-    (doc as any).autoTable({
+    autoTable(doc, {
       head: [['Descrição', 'Tipo', 'Valor', 'Status', 'Vencimento']],
       body: tableData,
       startY: 65,
