@@ -62,6 +62,7 @@ export default function Reports() {
         .select(`
           *,
           accounts!account_id(name),
+          payment_accounts:accounts!payment_account_id(name),
           cases!case_id(name),
           categories!category_id(name, color),
           clients!client_id(name)
@@ -81,6 +82,8 @@ export default function Reports() {
 
       if (error) throw error;
 
+      console.log('Dados carregados do banco:', data);
+
       // Preparar dados para export
       const exportTransactions: ExportTransaction[] = (data || []).map(t => ({
         id: t.id,
@@ -92,6 +95,7 @@ export default function Reports() {
         payment_date: t.payment_date,
         account_name: t.accounts?.name,
         account_id: t.account_id,
+        payment_account_id: t.payment_account_id,
         case_name: t.cases?.name,
         category_name: t.categories?.name,
         client_name: t.clients?.name,
@@ -236,7 +240,12 @@ export default function Reports() {
   };
 
   const getAccountMovementReport = (accountId: string) => {
-    return transactions.filter(t => t.account_id === accountId);
+    const filteredTransactions = transactions.filter(t => 
+      t.account_id === accountId || t.payment_account_id === accountId
+    );
+    console.log(`Transações para conta ${accountId}:`, filteredTransactions);
+    console.log(`Total de transações carregadas:`, transactions.length);
+    return filteredTransactions;
   };
 
   const handleGenerateDefaultersReport = () => {

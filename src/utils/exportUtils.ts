@@ -10,6 +10,7 @@ export interface ExportTransaction {
   payment_date?: string;
   account_name?: string;
   account_id?: string;
+  payment_account_id?: string;
   case_name?: string;
   category_name?: string;
   client_name?: string;
