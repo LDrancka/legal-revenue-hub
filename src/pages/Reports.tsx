@@ -95,12 +95,12 @@ export default function Reports() {
 
       console.log('Dados carregados do banco:', data);
 
-      // Processar transações considerando rateios
+      // Processar transações considerando rateios corretamente
       const processedTransactions: ExportTransaction[] = [];
       
       (data || []).forEach(t => {
         if (t.transaction_splits && t.transaction_splits.length > 0) {
-          // Transação com rateio - criar uma entrada para cada split
+          // Transação com rateio - APENAS criar entradas para os splits
           t.transaction_splits.forEach((split: any) => {
             processedTransactions.push({
               id: `${t.id}-split-${split.id}`,
@@ -123,7 +123,10 @@ export default function Reports() {
             });
           });
         } else {
-          // Transação normal - sem rateio
+          // Transação sem rateio - usar payment_account_id primeiro, depois account_id
+          const effectiveAccountId = t.payment_account_id || t.account_id;
+          const effectiveAccountName = t.payment_accounts?.name || t.accounts?.name;
+          
           processedTransactions.push({
             id: t.id,
             description: t.description,
@@ -132,8 +135,8 @@ export default function Reports() {
             status: t.status,
             due_date: t.due_date,
             payment_date: t.payment_date,
-            account_name: t.accounts?.name,
-            account_id: t.account_id,
+            account_name: effectiveAccountName,
+            account_id: effectiveAccountId,
             payment_account_id: t.payment_account_id,
             case_name: t.cases?.name,
             category_name: t.categories?.name,
@@ -283,9 +286,17 @@ export default function Reports() {
   const getAccountMovementReport = (accountId: string) => {
     if (accountId === 'all') return transactions;
     
-    const filteredTransactions = transactions.filter(t => 
-      t.account_id === accountId || t.payment_account_id === accountId
-    );
+    // Filtrar corretamente considerando a lógica dos saldos reais
+    const filteredTransactions = transactions.filter(t => {
+      // Se é um split, verificar se pertence à conta
+      if (t.is_split) {
+        return t.account_id === accountId;
+      }
+      
+      // Se não é split, verificar account_id ou payment_account_id
+      return t.account_id === accountId || t.payment_account_id === accountId;
+    });
+    
     console.log(`Transações para conta ${accountId}:`, filteredTransactions);
     console.log(`Total de transações carregadas:`, transactions.length);
     return filteredTransactions;
