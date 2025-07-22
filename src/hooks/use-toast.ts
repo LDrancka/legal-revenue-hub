@@ -161,6 +161,13 @@ function toast({ ...props }: Toast) {
     },
   })
 
+  // Auto-dismiss após TOAST_REMOVE_DELAY se não for explicitamente definido como permanente
+  if (props.duration !== Infinity) {
+    setTimeout(() => {
+      dismiss()
+    }, TOAST_REMOVE_DELAY)
+  }
+
   return {
     id: id,
     dismiss,
