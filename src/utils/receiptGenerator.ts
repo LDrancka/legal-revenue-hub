@@ -189,7 +189,7 @@ export function generateReceipt(data: ReceiptData): void {
       const docLabel = data.type === 'despesa' && data.officeDocumentType === 'cnpj' ? 'CNPJ' : 'CPF';
       textoRecebi += `, ${docLabel} ${pagadorDoc}`;
     }
-    textoRecebi += `, a importância de ${valorExtenso}, referente à ${data.description}. Para maior clareza, firmo(amos) o presente recibo que comprova o recebimento integral do valor mencionado, concedendo quitação plena, geral e irrevogável pela quantia recebida`;
+    textoRecebi += `, a importância de ${valorExtenso}, referente à ${data.description}. Para maior clareza, firmo(amos) presente recibo comprova recebimento integral do valor mencionado, concedendo quitação plena, geral e irrevogável pela quantia recebida`;
     
     // Adicionar informações de pagamento se existirem
     if (data.paymentMethod && data.paymentMethod !== 'Dinheiro') {
